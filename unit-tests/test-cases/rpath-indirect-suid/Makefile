@@ -1,5 +1,5 @@
 ##
-# Copyright (c) 2007 Apple Inc. All rights reserved.
+# Copyright (c) 2007-2009 Apple Inc. All rights reserved.
 #
 # @APPLE_LICENSE_HEADER_START@
 # 
@@ -20,9 +20,15 @@
 # 
 # @APPLE_LICENSE_HEADER_END@
 ##
-TESTROOT = ../..
+PWD = $(shell pwd)
+TESTROOT = $(PWD)/../..
 include ${TESTROOT}/include/common.makefile
 
+ifeq "$(OS_NAME)" "iPhoneOS"
+	RUN_AS_USER = login -f -l mobile
+else
+	RUN_AS_USER = 
+endif
 
 #
 # a setuid main executable linked with -rpath links against a dylib 
@@ -30,12 +36,13 @@ include ${TESTROOT}/include/common.makefile
 # LC_RPATH uses @loader_path or a relative path, but ok if it is an absolute path
 #
 
+all-check: all check
 
-run: all
+check:
 	./main || echo "FAIL rpath-indirect-suid absolute path"
-	${TESTROOT}/bin/exit-non-zero-pass.pl "rpath-indirect-suid @loader_path path" "rpath-indirect-suid @loader_path path" ./main_bad1
-	${TESTROOT}/bin/exit-non-zero-pass.pl "rpath-indirect-suid relative path" "rpath-indirect-suid relative path" ./main_bad2
-	${TESTROOT}/bin/exit-non-zero-pass.pl "rpath-indirect-suid @rpath spoof" "rpath-indirect-suid @rpath spoof" ./main_bad3
+	${RUN_AS_USER} ${PASS_IFF_FAILURE} "rpath-indirect-suid @loader_path path" "rpath-indirect-suid @loader_path path" $(PWD)/main_bad1
+	${RUN_AS_USER} ${PASS_IFF_FAILURE} "rpath-indirect-suid relative path" "rpath-indirect-suid relative path" $(PWD)/main_bad2
+	${RUN_AS_USER} ${PASS_IFF_FAILURE} "rpath-indirect-suid @rpath spoof" "rpath-indirect-suid @rpath spoof" $(PWD)/main_bad3
 
 all: main main_bad1 main_bad2 main_bad3
 
@@ -44,10 +51,10 @@ hide/hole/libbar.dylib : bar.c
 	${CC} bar.c -dynamiclib -o hide/hole/libbar.dylib -install_name @rpath/libbar.dylib
 
 libfoo.dylib : foo.c hide/hole/libbar.dylib
-	${CC} foo.c -dynamiclib -o "`pwd`/libfoo.dylib" hide/hole/libbar.dylib 
+	${CC} foo.c -dynamiclib -o "${PWD}/libfoo.dylib" hide/hole/libbar.dylib 
 
 main : main.c libfoo.dylib
-	${CC} -I${TESTROOT}/include main.c -o main libfoo.dylib -Wl,-rpath -Wl,`pwd`/hide/hole
+	${CC} -I${TESTROOT}/include main.c -o main libfoo.dylib -Wl,-rpath -Wl,${PWD}/hide/hole
 	sudo chown root main
 	sudo chmod 4755 main
 

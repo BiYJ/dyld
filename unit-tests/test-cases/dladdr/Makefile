@@ -1,5 +1,5 @@
 ##
-# Copyright (c) 2005 Apple Computer, Inc. All rights reserved.
+# Copyright (c) 2005-2009 Apple Inc. All rights reserved.
 #
 # @APPLE_LICENSE_HEADER_START@
 # 
@@ -23,12 +23,15 @@
 TESTROOT = ../..
 include ${TESTROOT}/include/common.makefile
 
-run: all
+all-check: all check
+
+check:
 	./main
 
 all:
-	${CC} ${CCFLAGS} -Wno-deprecated-declarations  -I${TESTROOT}/include -o main main.c
+	${CC} ${CCFLAGS} -Wno-deprecated-declarations -g -I${TESTROOT}/include -o main main.c
+	
 
 clean:
-	${RM} ${RMFLAGS} *~ main
+	${RM} ${RMFLAGS} *~ main main.dSYM
 

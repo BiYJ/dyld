@@ -1,6 +1,6 @@
 /* -*- mode: C++; c-basic-offset: 4; tab-width: 4 -*- 
  *
- * Copyright (c) 2005 Apple Computer, Inc. All rights reserved.
+ * Copyright (c) 2005-2011 Apple Inc. All rights reserved.
  *
  * @APPLE_LICENSE_HEADER_START@
  * 
@@ -31,46 +31,34 @@
 //
 // Architectures
 //
-struct ppc
-{
-	typedef Pointer32<BigEndian>		P;
-	
-	enum ReferenceKinds {  kNoFixUp, kFollowOn, kPointer, kPointerWeakImport, kPointerDiff32, kPointerDiff64,
-							kBranch24, kBranch24WeakImport, kBranch14,
-							kPICBaseLow16, kPICBaseLow14, kPICBaseHigh16, 
-							kAbsLow16, kAbsLow14, kAbsHigh16, kAbsHigh16AddLow };
-};
-
-struct ppc64
-{
-	typedef Pointer64<BigEndian>		P;
-	
-	enum ReferenceKinds {  kNoFixUp, kFollowOn, kPointer, kPointerWeakImport, kPointerDiff32, kPointerDiff64,
-							kBranch24, kBranch24WeakImport, kBranch14,
-							kPICBaseLow16, kPICBaseLow14, kPICBaseHigh16, 
-							kAbsLow16, kAbsLow14, kAbsHigh16, kAbsHigh16AddLow };
-};
-
 struct x86
 {
 	typedef Pointer32<LittleEndian>		P;
 	
-	enum ReferenceKinds {  kNoFixUp, kFollowOn, kPointer, kPointerWeakImport, kPointerDiff, 
-							kPCRel32, kPCRel32WeakImport, kAbsolute32 };
 };
 
 struct x86_64
 {
 	typedef Pointer64<LittleEndian>		P;
-	
-	enum ReferenceKinds {  kNoFixUp, kFollowOn, kPointer, kPointerWeakImport, kPointerDiff, kPointerDiff32, 
-							kPCRel32, kPCRel32_1, kPCRel32_2, kPCRel32_4,
-							kBranchPCRel32, kBranchPCRel32WeakImport,
-							kPCRel32GOTLoad, kPCRel32GOTLoadWeakImport,
-							kPCRel32GOT, kPCRel32GOTWeakImport };
 };
 
+struct arm
+{
+	typedef Pointer32<LittleEndian>		P;
+	
+};
 
+struct arm64
+{
+	typedef Pointer64<LittleEndian>		P;
+
+};
+
+struct arm64_32
+{
+	typedef Pointer32<LittleEndian>		P;
+
+};
 
 
 

@@ -1,5 +1,5 @@
 ##
-# Copyright (c) 2007 Apple Inc. All rights reserved.
+# Copyright (c) 2007-2009 Apple Inc. All rights reserved.
 #
 # @APPLE_LICENSE_HEADER_START@
 # 
@@ -27,20 +27,19 @@ include ${TESTROOT}/include/common.makefile
 # verifies that crt glue can handle  argv[0] = NULL
 #
 
-run: all
-	${TESTROOT}/bin/exit-zero-pass.pl "crt-argv-NULL main-10.4" "crt-argv-NULL main-10.4"    ./main-10.4
-	${TESTROOT}/bin/exit-zero-pass.pl "crt-argv-NULL main-10.5" "crt-argv-NULL main-10.5"    ./main-10.5
+all-check: all check
+
+check:
+	${TESTROOT}/bin/exit-zero-pass.pl "crt-argv-NULL main" "crt-argv-NULL main"    ./main
 
 
-all:  main-10.4  main-10.5
+all:  main
 
-main-10.4: main.c
-	${CC} ${CCFLAGS} -I${TESTROOT}/include -o main-10.4 main.c -mmacosx-version-min=10.4
 
-main-10.5: main.c
-	${CC} ${CCFLAGS} -I${TESTROOT}/include -o main-10.5 main.c -mmacosx-version-min=10.5
+main: main.c
+	${CC} ${CCFLAGS} -I${TESTROOT}/include -o main main.c
 
 clean:
-	${RM} ${RMFLAGS} *~ main-10.4  main-10.5
+	${RM} ${RMFLAGS} *~ main
  
 

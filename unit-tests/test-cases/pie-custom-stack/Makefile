@@ -25,8 +25,9 @@ include ${TESTROOT}/include/common.makefile
 
 # run a PIE four times and verify its load address was different every time
 
+all-check: all check
 
-run: main
+check:
 	./main > main.out
 	./main >> main.out
 	./main >> main.out
@@ -38,9 +39,10 @@ run: main
 		echo "FAIL pie-custom-stack"; \
 	fi; \
 	 
+all: main
 
 main : main.c
-	${CC} ${CCFLAGS} -I${TESTROOT}/include -Wl,-pie -o main main.c -mmacosx-version-min=10.5 -Wl,-stack_size,0x10000000
+	${CC} ${CCFLAGS} -I${TESTROOT}/include -Wl,-pie -o main main.c -Wl,-stack_size,0x10000000
 
 
 clean:

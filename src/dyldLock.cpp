@@ -1,6 +1,6 @@
 /* -*- mode: C++; c-basic-offset: 4; tab-width: 4 -*-
  *
- * Copyright (c) 2004-2007 Apple Inc. All rights reserved.
+ * Copyright (c) 2004-2012 Apple Inc. All rights reserved.
  *
  * @APPLE_LICENSE_HEADER_START@
  * 
@@ -28,39 +28,31 @@
 
 
 
-static pthread_mutex_t	sGlobalMutex;
+static pthread_mutex_t	sGlobalMutex = PTHREAD_RECURSIVE_MUTEX_INITIALIZER;
 
-
-//
-// This initializer can go away once the following is available:
-//     <rdar://problem/4927311> implement PTHREAD_RECURSIVE_MUTEX_INITIALIZER_NP
-//
-void dyldGlobalLockInitialize()
-{
-	pthread_mutexattr_t recursiveMutexAttr;
-	pthread_mutexattr_init(&recursiveMutexAttr);
-	pthread_mutexattr_settype(&recursiveMutexAttr, PTHREAD_MUTEX_RECURSIVE);
-	pthread_mutex_init(&sGlobalMutex, &recursiveMutexAttr);
-}
+// <rdar://problem/6361143> Need a way to determine if a gdb call to dlopen() would block
+int	__attribute__((visibility("hidden")))			_dyld_global_lock_held = 0;
 
 
 LockHelper::LockHelper() 
 { 
-	pthread_mutex_lock(&sGlobalMutex);
+	dyldGlobalLockAcquire();
 }
 
 LockHelper::~LockHelper() 
 { 
-	pthread_mutex_unlock(&sGlobalMutex);
+	dyldGlobalLockRelease();
 }
 
 void dyldGlobalLockAcquire() 
 {
 	pthread_mutex_lock(&sGlobalMutex);
+	++_dyld_global_lock_held;
 }
 
 void dyldGlobalLockRelease() 
 {
+	--_dyld_global_lock_held;
 	pthread_mutex_unlock(&sGlobalMutex);
 }
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006 Apple Computer, Inc. All rights reserved.
+ * Copyright (c) 2006-2010 Apple Inc. All rights reserved.
  *
  * @APPLE_LICENSE_HEADER_START@
  * 
@@ -23,9 +23,19 @@
 #ifndef _DYLD_IMAGES_
 #define _DYLD_IMAGES_
 
+#include <stdbool.h>
+#include <unistd.h>
+#include <mach/mach.h>
+#include <uuid/uuid.h>
+
+#if defined(__cplusplus) && (BUILDING_LIBDYLD || BUILDING_DYLD)
+#include <atomic>
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
+
 
 
 /* 
@@ -43,9 +53,23 @@ extern "C" {
  * The notification is called after infoArray is updated.  This means that if gdb attaches to a process
  * and infoArray is NULL, gdb can set a break point on notification and let the proccess continue to
  * run until the break point.  Then gdb can inspect the full infoArray.
+ *
+ * The dyldVersion field always points to a C string that contains the dyld version.  For instance,
+ * in dyld-127.3, dyldVersion would contain a pointer to "127.3".
+ *
+ * The errorMessage and terminationFlags fields are normally zero.  If dyld terminates a process
+ * (for instance because a required dylib or symbol is missing), then the errorMessage field will
+ * be set to point to a C string message buffer containing the reason dyld terminate the process.
+ * The low bit of the terminationFlags will be set if dyld terminated the process before any user
+ * code ran, in which case there is no need for the crash log to contain the backtrace.
+ *
+ * When dyld terminates a process because some required dylib or symbol cannot be bound, in 
+ * addition to the errorMessage field, it now sets the errorKind field and the corresponding
+ * fields: errorClientOfDylibPath, errorTargetDylibPath, errorSymbol.
+ *
  */
 
-enum dyld_image_mode { dyld_image_adding=0, dyld_image_removing=1 };
+enum dyld_image_mode { dyld_image_adding=0, dyld_image_removing=1, dyld_image_info_change=2 };
 
 struct dyld_image_info {
 	const struct mach_header*	imageLoadAddress;	/* base address image is mapped into */
@@ -55,19 +79,82 @@ struct dyld_image_info {
 													/* then file has been modified since dyld loaded it */
 };
 
+struct dyld_uuid_info {
+	const struct mach_header*	imageLoadAddress;	/* base address image is mapped into */
+	uuid_t						imageUUID;			/* UUID of image */
+};
+
 typedef void (*dyld_image_notifier)(enum dyld_image_mode mode, uint32_t infoCount, const struct dyld_image_info info[]);
 
+/* for use in dyld_all_image_infos.errorKind field */
+enum {	dyld_error_kind_none=0, 
+		dyld_error_kind_dylib_missing=1, 
+		dyld_error_kind_dylib_wrong_arch=2,
+		dyld_error_kind_dylib_version=3,
+		dyld_error_kind_symbol_missing=4
+	};
+
+/* internal limit */ 
+#define DYLD_MAX_PROCESS_INFO_NOTIFY_COUNT  8
+
 struct dyld_all_image_infos {
-	uint32_t						version;		/* == 1 in Mac OS X 10.4 */
+	uint32_t						version;		/* 1 in Mac OS X 10.4 and 10.5 */
 	uint32_t						infoArrayCount;
-	const struct dyld_image_info*	infoArray;
+#if defined(__cplusplus) && (BUILDING_LIBDYLD || BUILDING_DYLD)
+    std::atomic<const struct dyld_image_info*>	infoArray;
+#else
+    const struct dyld_image_info*    infoArray;
+#endif
 	dyld_image_notifier				notification;		
 	bool							processDetachedFromSharedRegion;
+	/* the following fields are only in version 2 (Mac OS X 10.6, iPhoneOS 2.0) and later */
+	bool							libSystemInitialized;
+	const struct mach_header*		dyldImageLoadAddress;
+	/* the following field is only in version 3 (Mac OS X 10.6, iPhoneOS 3.0) and later */
+	void*							jitInfo;
+	/* the following fields are only in version 5 (Mac OS X 10.6, iPhoneOS 3.0) and later */
+	const char*						dyldVersion;
+	const char*						errorMessage;
+	uintptr_t						terminationFlags;
+	/* the following field is only in version 6 (Mac OS X 10.6, iPhoneOS 3.1) and later */
+	void*							coreSymbolicationShmPage;
+	/* the following field is only in version 7 (Mac OS X 10.6, iPhoneOS 3.1) and later */
+	uintptr_t						systemOrderFlag;
+	/* the following field is only in version 8 (Mac OS X 10.7, iPhoneOS 3.1) and later */
+	uintptr_t						uuidArrayCount;
+	const struct dyld_uuid_info*	uuidArray;		/* only images not in dyld shared cache */
+	/* the following field is only in version 9 (Mac OS X 10.7, iOS 4.0) and later */
+	struct dyld_all_image_infos*	dyldAllImageInfosAddress;
+	/* the following field is only in version 10 (Mac OS X 10.7, iOS 4.2) and later */
+	uintptr_t						initialImageCount;
+	/* the following field is only in version 11 (Mac OS X 10.7, iOS 4.2) and later */
+	uintptr_t						errorKind;
+	const char*						errorClientOfDylibPath;
+	const char*						errorTargetDylibPath;
+	const char*						errorSymbol;
+	/* the following field is only in version 12 (Mac OS X 10.7, iOS 4.3) and later */
+	uintptr_t						sharedCacheSlide;
+	/* the following field is only in version 13 (Mac OS X 10.9, iOS 7.0) and later */
+	uint8_t							sharedCacheUUID[16];
+	/* the following field is only in version 15 (macOS 10.12, iOS 10.0) and later */
+	uintptr_t						sharedCacheBaseAddress;
+#if defined(__cplusplus) && (BUILDING_LIBDYLD || BUILDING_DYLD)
+    // We want this to be atomic in libdyld so that we can see updates when we map it shared
+    std::atomic<uint64_t>           infoArrayChangeTimestamp;
+#else
+	uint64_t						infoArrayChangeTimestamp;
+#endif
+	const char*						dyldPath;
+	mach_port_t						notifyPorts[DYLD_MAX_PROCESS_INFO_NOTIFY_COUNT];
+#if __LP64__
+	uintptr_t						reserved[13-(DYLD_MAX_PROCESS_INFO_NOTIFY_COUNT/2)];
+#else
+	uintptr_t						reserved[13-DYLD_MAX_PROCESS_INFO_NOTIFY_COUNT];
+#endif
+	/* the following field is only in version 16 (macOS 10.13, iOS 11.0) and later */
+    uintptr_t                       compact_dyld_image_info_addr;
+    size_t                          compact_dyld_image_info_size;
 };
-extern struct dyld_all_image_infos  dyld_all_image_infos;
-
-
-
 
 /*
  * Beginning in Mac OS X 10.5, this is how gdb discovers where the shared cache is in a process.
@@ -87,7 +174,7 @@ struct dyld_shared_cache_ranges {
 		uintptr_t	length;
 	}							ranges[4];			/* max regions */
 };
-extern struct dyld_shared_cache_ranges dyld_shared_cache_ranges;
+extern struct dyld_shared_cache_ranges dyld_shared_cache_ranges __attribute__((visibility("hidden")));
 
 
 

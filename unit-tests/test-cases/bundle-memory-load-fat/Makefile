@@ -1,5 +1,5 @@
 ##
-# Copyright (c) 2005 Apple Computer, Inc. All rights reserved.
+# Copyright (c) 2005-2011 Apple Inc. All rights reserved.
 #
 # @APPLE_LICENSE_HEADER_START@
 # 
@@ -23,9 +23,11 @@
 TESTROOT = ../..
 include ${TESTROOT}/include/common.makefile
 
-FATFLAGS = `lipo -detailed_info /usr/lib/libSystem.B.dylib | grep architecture | sed -e 's/architecture/-arch/'`
+FATFLAGS = $(shell ${LIPO} -detailed_info $(IOSROOT)/usr/lib/libSystem.B.dylib | grep architecture | sed -e 's/architecture/-arch/')
 
-run: all
+all-check: all check
+
+check:
 	./main
 
 all: main test.bundle
@@ -34,7 +36,9 @@ main : main.c
 	${CC} ${CCFLAGS}  -Wno-deprecated-declarations -I${TESTROOT}/include -o main main.c
 
 test.bundle : bundle.c
-	gcc ${FATFLAGS} -bundle -o test.bundle bundle.c
+	echo ${IOSROOT}
+	echo $(IOSROOT)
+	${CC} ${FATFLAGS} -bundle -o test.bundle bundle.c
 
 clean:
 	${RM} ${RMFLAGS} *~ main test.bundle

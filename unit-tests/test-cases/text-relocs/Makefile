@@ -1,5 +1,5 @@
 ##
-# Copyright (c) 2005 Apple Computer, Inc. All rights reserved.
+# Copyright (c) 2005-2007 Apple Inc. All rights reserved.
 #
 # @APPLE_LICENSE_HEADER_START@
 # 
@@ -24,23 +24,32 @@ TESTROOT = ../..
 include ${TESTROOT}/include/common.makefile
 
 ### 
-### This test case is to verify __TEXT reliocations work
+### This test case is to verify __TEXT relocations work in dylibs
 ### 
 ### 
 
 
+TEXT_RELOC_FLAGS = -mdynamic-no-pic -read_only_relocs suppress -Wl,-w
+TEXT_STAT_FLAGS = -static
 
-run: all
+ifeq "iPhoneOS" "$(OS_NAME)"
+	# iOS does not support text relocs
+	TEXT_RELOC_FLAGS = 
+	TEXT_STAT_FLAGS =
+endif 
+
+
+all-check: all check
+
+check:
 	./main
 
-all: main 
-
-main: main.c libbar.dylib
-	${CC} ${CCFLAGS} -I${TESTROOT}/include -o main main.c libbar.dylib
-
-libbar.dylib: foo.s bar.c
-	${CC} ${CCFLAGS} -dynamiclib -o libbar.dylib bar.c foo.s -read_only_relocs suppress -Os
+all:  
+	${CC} ${CCFLAGS} -dynamiclib bar.c space.s -Os -o libbar.dylib  ${TEXT_RELOC_FLAGS}
+	${CC} ${CCFLAGS} bind.c $(TEXT_STAT_FLAGS) -Os -c -o bind.o
+	${CC}  -dynamiclib bind.o libbar.dylib -o libbind.dylib ${TEXT_RELOC_FLAGS}
+	${CC} ${CCFLAGS} -I${TESTROOT}/include -o main main.c libbar.dylib libbind.dylib
 	
 clean:
-	${RM} ${RMFLAGS} *~ main libbar.dylib
+	${RM} ${RMFLAGS} *~ main libbar.dylib libbind.dylib bind.o
 

@@ -1,4 +1,4 @@
-.Dd August 16, 2006
+.Dd November 29, 2010
 .Dt dyld 3
 .Sh NAME
 .Nm _dyld_image_count,
@@ -64,7 +64,7 @@ may be adding or removing images during the iteration.
 .Fn _dyld_get_image_header
 returns a pointer to the mach header of the image indexed by image_index.  If 
 .Fa image_index
-isout of range, NULL is returned.
+is out of range, NULL is returned.
 .Pp
 .Fn _dyld_get_image_vmaddr_slide
 returns the virtural memory address slide amount of the image indexed by
@@ -107,7 +107,10 @@ copies the path of the main executable into the buffer
 .Fa buf .
 The 
 .Fa bufsize
-parameter should initially be the size of the buffer.  This function returns 0 if the path was successfully copied.
+parameter should initially be the size of the buffer.  This function returns 0 if the path was successfully copied,
+and  *
+.Fa bufsize
+is left unchanged. 
 It returns -1 if the buffer is not large enough, and *
 .Fa bufsize
 is set to the size required. 
