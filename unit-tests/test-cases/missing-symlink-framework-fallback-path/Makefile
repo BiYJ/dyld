@@ -23,9 +23,7 @@
 TESTROOT = ../..
 include ${TESTROOT}/include/common.makefile
 
-all-check: all check
-
-check:
+run: all
 	export DYLD_FALLBACK_FRAMEWORK_PATH="dir" && ${TESTROOT}/bin/exit-zero-pass.pl "pass message" "fail message" ./main
 
 all: main dir/Foo.framework/Versions/Current/Foo

@@ -23,9 +23,7 @@
 TESTROOT = ../..
 include ${TESTROOT}/include/common.makefile
 
-all-check: all check
-
-check:
+run: all
 	${TESTROOT}/bin/exit-zero-pass.pl "_dyld_launched_prebound() was implemented" "_dyld_launched_prebound() was not implemented" ./main
 
 all:

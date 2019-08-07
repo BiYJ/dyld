@@ -43,100 +43,58 @@ struct uuid_command {
 	#define S_16BYTE_LITERALS 0xE
 #endif
 
-#ifndef CPU_SUBTYPE_ARM_V5TEJ
-	#define CPU_SUBTYPE_ARM_V5TEJ		((cpu_subtype_t) 7)
-#endif
-#ifndef CPU_SUBTYPE_ARM_XSCALE
-	#define CPU_SUBTYPE_ARM_XSCALE		((cpu_subtype_t) 8)
-#endif
-#ifndef CPU_SUBTYPE_ARM_V7
-	#define CPU_SUBTYPE_ARM_V7			((cpu_subtype_t) 9)
-#endif
-#ifndef CPU_SUBTYPE_ARM_V7F
-	#define CPU_SUBTYPE_ARM_V7F			((cpu_subtype_t) 10)
-#endif
-#ifndef CPU_SUBTYPE_ARM_V7K
-	#define CPU_SUBTYPE_ARM_V7K			((cpu_subtype_t) 12)
-#endif
-#ifndef CPU_SUBTYPE_ARM_V7S
-	#define CPU_SUBTYPE_ARM_V7S			((cpu_subtype_t) 11)
-#endif
-#ifndef CPU_SUBTYPE_ARM64_ALL
-	#define CPU_SUBTYPE_ARM64_ALL		((cpu_subtype_t) 0)
-#endif
-#ifndef CPU_TYPE_ARM64
-	#define CPU_TYPE_ARM64				((cpu_type_t) (CPU_TYPE_ARM | CPU_ARCH_ABI64))
-#endif
-
-#define ARM64_RELOC_UNSIGNED            0 // for pointers
-
-
-#ifndef LC_LOAD_UPWARD_DYLIB
-	#define	LC_LOAD_UPWARD_DYLIB (0x23|LC_REQ_DYLD)	/* load of dylib whose initializers run later */
-#endif
-
-#ifndef EXPORT_SYMBOL_FLAGS_STUB_AND_RESOLVER
-	#define EXPORT_SYMBOL_FLAGS_STUB_AND_RESOLVER 0x10
-#endif
-#ifndef EXPORT_SYMBOL_FLAGS_REEXPORT
-	#define EXPORT_SYMBOL_FLAGS_REEXPORT 0x08
-#endif
-
-#ifndef LC_FUNCTION_STARTS
-	#define LC_FUNCTION_STARTS 0x26
-#endif
-
-#ifndef LC_DATA_IN_CODE
-	#define LC_DATA_IN_CODE 0x29
-#endif
-
-#ifndef LC_DYLIB_CODE_SIGN_DRS
-	#define LC_DYLIB_CODE_SIGN_DRS 0x2B
-#endif
-
-#ifndef CPU_SUBTYPE_X86_64_H
-	#define CPU_SUBTYPE_X86_64_H		((cpu_subtype_t) 8) 
-#endif
-
-
-#define DYLD_CACHE_ADJ_V2_FORMAT				0x7F
-
-#define DYLD_CACHE_ADJ_V2_POINTER_32			0x01
-#define DYLD_CACHE_ADJ_V2_POINTER_64			0x02
-#define DYLD_CACHE_ADJ_V2_DELTA_32			    0x03
-#define DYLD_CACHE_ADJ_V2_DELTA_64			    0x04
-#define DYLD_CACHE_ADJ_V2_ARM64_ADRP			0x05
-#define DYLD_CACHE_ADJ_V2_ARM64_OFF12			0x06
-#define DYLD_CACHE_ADJ_V2_ARM64_BR26			0x07
-#define DYLD_CACHE_ADJ_V2_ARM_MOVW_MOVT			0x08
-#define DYLD_CACHE_ADJ_V2_ARM_BR24				0x09
-#define DYLD_CACHE_ADJ_V2_THUMB_MOVW_MOVT		0x0A
-#define DYLD_CACHE_ADJ_V2_THUMB_BR22			0x0B
-#define DYLD_CACHE_ADJ_V2_IMAGE_OFF_32			0x0C
-
-
 #include "FileAbstraction.hpp"
 #include "Architectures.hpp"
 
-// utility to pair together a cpu-type and cpu-sub-type
-struct ArchPair
-{
-	uint32_t	arch;
-	uint32_t	subtype;
-	
-	ArchPair(uint32_t cputype, uint32_t cpusubtype) : arch(cputype), subtype(cpusubtype) {}
-	
-	bool operator<(const ArchPair& other) const { 
-		if ( this->arch != other.arch )
-			return (this->arch < other.arch);
-		return (this->subtype < other.subtype);
-	}
-};
 
 
 //
 // This abstraction layer makes every mach-o file look like a 64-bit mach-o file with native endianness
 //
+
+
+
+//
+// mach-o file header
+//
+template <typename P> struct macho_header_content {};
+template <> struct macho_header_content<Pointer32<BigEndian> >    { mach_header		fields; };
+template <> struct macho_header_content<Pointer64<BigEndian> >	  { mach_header_64	fields; };
+template <> struct macho_header_content<Pointer32<LittleEndian> > { mach_header		fields; };
+template <> struct macho_header_content<Pointer64<LittleEndian> > { mach_header_64	fields; };
+
+template <typename P>
+class macho_header {
+public:
+	uint32_t		magic() const					INLINE { return E::get32(header.fields.magic); }
+	void			set_magic(uint32_t value)		INLINE { E::set32(header.fields.magic, value); }
+
+	uint32_t		cputype() const					INLINE { return E::get32(header.fields.cputype); }
+	void			set_cputype(uint32_t value)		INLINE { E::set32((uint32_t&)header.fields.cputype, value); }
+
+	uint32_t		cpusubtype() const				INLINE { return E::get32(header.fields.cpusubtype); }
+	void			set_cpusubtype(uint32_t value)	INLINE { E::set32((uint32_t&)header.fields.cpusubtype, value); }
+
+	uint32_t		filetype() const				INLINE { return E::get32(header.fields.filetype); }
+	void			set_filetype(uint32_t value)	INLINE { E::set32(header.fields.filetype, value); }
+
+	uint32_t		ncmds() const					INLINE { return E::get32(header.fields.ncmds); }
+	void			set_ncmds(uint32_t value)		INLINE { E::set32(header.fields.ncmds, value); }
+
+	uint32_t		sizeofcmds() const				INLINE { return E::get32(header.fields.sizeofcmds); }
+	void			set_sizeofcmds(uint32_t value)	INLINE { E::set32(header.fields.sizeofcmds, value); }
+
+	uint32_t		flags() const					INLINE { return E::get32(header.fields.flags); }
+	void			set_flags(uint32_t value)		INLINE { E::set32(header.fields.flags, value); }
+
+	uint32_t		reserved() const				INLINE { return E::get32(header.fields.reserved); }
+	void			set_reserved(uint32_t value)	INLINE { E::set32(header.fields.reserved, value); }
+
+	typedef typename P::E		E;
+private:
+	macho_header_content<P>	header;
+};
+
 
 //
 // mach-o load command
@@ -771,187 +729,8 @@ private:
 };
 
 
-//
-// mach-o file header
-//
-template <typename P> struct macho_header_content {};
-template <> struct macho_header_content<Pointer32<BigEndian> >    { mach_header		fields; };
-template <> struct macho_header_content<Pointer64<BigEndian> >	  { mach_header_64	fields; };
-template <> struct macho_header_content<Pointer32<LittleEndian> > { mach_header		fields; };
-template <> struct macho_header_content<Pointer64<LittleEndian> > { mach_header_64	fields; };
-
-template <typename P>
-class macho_header {
-public:
-	uint32_t		magic() const					INLINE { return E::get32(header.fields.magic); }
-	void			set_magic(uint32_t value)		INLINE { E::set32(header.fields.magic, value); }
-
-	uint32_t		cputype() const					INLINE { return E::get32(header.fields.cputype); }
-	void			set_cputype(uint32_t value)		INLINE { E::set32((uint32_t&)header.fields.cputype, value); }
-
-	uint32_t		cpusubtype() const				INLINE { return E::get32(header.fields.cpusubtype); }
-	void			set_cpusubtype(uint32_t value)	INLINE { E::set32((uint32_t&)header.fields.cpusubtype, value); }
-
-	uint32_t		filetype() const				INLINE { return E::get32(header.fields.filetype); }
-	void			set_filetype(uint32_t value)	INLINE { E::set32(header.fields.filetype, value); }
-
-	uint32_t		ncmds() const					INLINE { return E::get32(header.fields.ncmds); }
-	void			set_ncmds(uint32_t value)		INLINE { E::set32(header.fields.ncmds, value); }
-
-	uint32_t		sizeofcmds() const				INLINE { return E::get32(header.fields.sizeofcmds); }
-	void			set_sizeofcmds(uint32_t value)	INLINE { E::set32(header.fields.sizeofcmds, value); }
-
-	uint32_t		flags() const					INLINE { return E::get32(header.fields.flags); }
-	void			set_flags(uint32_t value)		INLINE { E::set32(header.fields.flags, value); }
-
-	uint32_t		reserved() const				INLINE { return E::get32(header.fields.reserved); }
-	void			set_reserved(uint32_t value)	INLINE { E::set32(header.fields.reserved, value); }
-
-    const macho_segment_command<P>* getSegment(const char *segname) const
-    {
-        const macho_load_command<P>* cmds = (macho_load_command<P>*)((uint8_t*)this + sizeof(macho_header<P>));
-        uint32_t cmd_count = this->ncmds();
-        const macho_load_command<P>* cmd = cmds;
-        for (uint32_t i = 0; i < cmd_count; ++i) {
-            if ( cmd->cmd() == macho_segment_command<P>::CMD ) {
-                const macho_segment_command<P>* segcmd = (macho_segment_command<P>*)cmd;
-                if (0 == strncmp(segname, segcmd->segname(), 16)) {
-                    return segcmd;
-              }
-            }
-            cmd = (macho_load_command<P>*)(((uint8_t*)cmd)+cmd->cmdsize());
-        }
-        return NULL;
-    }
-
-    const macho_section<P>* getSection(const char *segname, const char *sectname) const
-    {
-       const  macho_segment_command<P>* segcmd = getSegment(segname);
-        if (!segcmd) return NULL;
-
-        const macho_section<P>* sectcmd = (macho_section<P>*)(segcmd+1);
-        uint32_t section_count = segcmd->nsects();
-        for (uint32_t j = 0; j < section_count; ++j) {
-            if (0 == ::strncmp(sectcmd[j].sectname(), sectname, 16)) {
-                return sectcmd+j;
-            }
-        }
-
-		if (strcmp(segname, "__DATA") == 0)
-			return getSection("__DATA_CONST", sectname);
-        return NULL;
-    }
-
-    const macho_load_command<P>* getLoadCommand(int query) const
-    {
-        const macho_load_command<P>* cmds = (macho_load_command<P>*)((uint8_t*)this + sizeof(macho_header<P>));
-        uint32_t cmd_count = this->ncmds();
-        const macho_load_command<P>* cmd = cmds;
-        for (uint32_t i = 0; i < cmd_count; ++i) {
-            if ( cmd->cmd() == query ) {
-                return cmd;
-            }
-            cmd = (macho_load_command<P>*)(((uint8_t*)cmd)+cmd->cmdsize());
-        }
-        return NULL;
-    }
-
-	typedef typename P::E		E;
-private:
-	macho_header_content<P>	header;
-};
 
 
-
-//
-// compressed dyld info load command
-//
-template <typename P>
-class macho_dyld_info_command {
-public:
-	uint32_t		cmd() const					INLINE { return E::get32(fields.cmd); }
-	void			set_cmd(uint32_t value)		INLINE { E::set32(fields.cmd, value); }
-
-	uint32_t		cmdsize() const				INLINE { return E::get32(fields.cmdsize); }
-	void			set_cmdsize(uint32_t value)	INLINE { E::set32(fields.cmdsize, value); }
-
-	uint32_t		rebase_off() const				INLINE { return E::get32(fields.rebase_off); }
-	void			set_rebase_off(uint32_t value)	INLINE { E::set32(fields.rebase_off, value);  }
-	
-	uint32_t		rebase_size() const				INLINE { return E::get32(fields.rebase_size); }
-	void			set_rebase_size(uint32_t value)	INLINE { E::set32(fields.rebase_size, value);  }
-	
-	uint32_t		bind_off() const				INLINE { return E::get32(fields.bind_off); }
-	void			set_bind_off(uint32_t value)	INLINE { E::set32(fields.bind_off, value);  }
-	
-	uint32_t		bind_size() const				INLINE { return E::get32(fields.bind_size); }
-	void			set_bind_size(uint32_t value)	INLINE { E::set32(fields.bind_size, value);  }
-	
-	uint32_t		weak_bind_off() const				INLINE { return E::get32(fields.weak_bind_off); }
-	void			set_weak_bind_off(uint32_t value)	INLINE { E::set32(fields.weak_bind_off, value);  }
-	
-	uint32_t		weak_bind_size() const				INLINE { return E::get32(fields.weak_bind_size); }
-	void			set_weak_bind_size(uint32_t value)	INLINE { E::set32(fields.weak_bind_size, value);  }
-	
-	uint32_t		lazy_bind_off() const				INLINE { return E::get32(fields.lazy_bind_off); }
-	void			set_lazy_bind_off(uint32_t value)	INLINE { E::set32(fields.lazy_bind_off, value);  }
-	
-	uint32_t		lazy_bind_size() const				INLINE { return E::get32(fields.lazy_bind_size); }
-	void			set_lazy_bind_size(uint32_t value)	INLINE { E::set32(fields.lazy_bind_size, value);  }
-	
-	uint32_t		export_off() const				INLINE { return E::get32(fields.export_off); }
-	void			set_export_off(uint32_t value)	INLINE { E::set32(fields.export_off, value);  }
-	
-	uint32_t		export_size() const				INLINE { return E::get32(fields.export_size); }
-	void			set_export_size(uint32_t value)	INLINE { E::set32(fields.export_size, value);  }
-	
-	
-	typedef typename P::E		E;
-private:
-	dyld_info_command	fields;
-};
-
-#ifndef NO_ULEB 
-inline uint64_t read_uleb128(const uint8_t*& p, const uint8_t* end) {
-	uint64_t result = 0;
-	int		 bit = 0;
-	do {
-		if (p == end)
-			throw "malformed uleb128 extends beyond trie";
-
-		uint64_t slice = *p & 0x7f;
-
-		if (bit >= 64 || slice << bit >> bit != slice)
-			throw "uleb128 too big for 64-bits";
-		else {
-			result |= (slice << bit);
-			bit += 7;
-		}
-	} 
-	while (*p++ & 0x80);
-	return result;
-}
-	
-
-static int64_t read_sleb128(const uint8_t*& p, const uint8_t* end)
-{
-	int64_t result = 0;
-	int bit = 0;
-	uint8_t byte;
-	do {
-		if (p == end)
-			throw "malformed sleb128";
-		byte = *p++;
-		result |= ((byte & 0x7f) << bit);
-		bit += 7;
-	} while (byte & 0x80);
-	// sign extend negative numbers
-	if ( (byte & 0x40) != 0 )
-		result |= (-1LL) << bit;
-	return result;
-}
-
-#endif
 
 
 #endif	// __MACH_O_FILE_ABSTRACTION__

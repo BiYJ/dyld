@@ -45,9 +45,7 @@ endif
 
 
 
-all-check: all check
-
-check:
+run: all
 	./main
 
 all: main 

@@ -35,6 +35,9 @@ public:
 	const char*		magic() const							INLINE { return fields.magic; }
 	void			set_magic(const char* value)			INLINE { memcpy(fields.magic, value, 16); }
 
+	//uint32_t		architecture() const					INLINE { return E::get32(fields.architecture); }
+	//void			set_architecture(uint32_t value)		INLINE { E::set32(fields.architecture, value); }
+
 	uint32_t		mappingOffset() const					INLINE { return E::get32(fields.mappingOffset); }
 	void			set_mappingOffset(uint32_t value)		INLINE { E::set32(fields.mappingOffset, value); }
 
@@ -50,29 +53,11 @@ public:
 	uint64_t		dyldBaseAddress() const					INLINE { return E::get64(fields.dyldBaseAddress); }
 	void			set_dyldBaseAddress(uint64_t value)		INLINE { E::set64(fields.dyldBaseAddress, value); }
 
-	uint64_t		codeSignatureOffset() const				INLINE { return E::get64(fields.codeSignatureOffset); }
-	void			set_codeSignatureOffset(uint64_t value)	INLINE { E::set64(fields.codeSignatureOffset, value); }
+	//uint32_t		dependenciesOffset() const				INLINE { return E::get32(fields.dependenciesOffset); }
+	//void			set_dependenciesOffset(uint32_t value)	INLINE { E::set32(fields.dependenciesOffset, value); }
 
-	uint64_t		codeSignatureSize() const				INLINE { return E::get64(fields.codeSignatureSize); }
-	void			set_codeSignatureSize(uint64_t value)	INLINE { E::set64(fields.codeSignatureSize, value); }
-
-	uint64_t		slideInfoOffset() const					INLINE { return E::get64(fields.slideInfoOffset); }
-	void			set_slideInfoOffset(uint64_t value)		INLINE { E::set64(fields.slideInfoOffset, value); }
-
-	uint64_t		slideInfoSize() const					INLINE { return E::get64(fields.slideInfoSize); }
-	void			set_slideInfoSize(uint64_t value)		INLINE { E::set64(fields.slideInfoSize, value); }
-
-	uint64_t		localSymbolsOffset() const				INLINE { return E::get64(fields.localSymbolsOffset); }
-	void			set_localSymbolsOffset(uint64_t value)	INLINE { E::set64(fields.localSymbolsOffset, value); }
-
-	uint64_t		localSymbolsSize() const				INLINE { return E::get64(fields.localSymbolsSize); }
-	void			set_localSymbolsSize(uint64_t value)	INLINE { E::set64(fields.localSymbolsSize, value); }
-
-	const uint8_t*	uuid() const							INLINE { return fields.uuid; }
-	void			set_uuid(const uint8_t value[16])		INLINE { memcpy(fields.uuid, value, 16); }
-	
-	uint64_t		cacheType() const				INLINE { return E::get64(fields.cacheType); }
-	void			set_cacheType(uint64_t value)	INLINE { E::set64(fields.cacheType, value); }
+	//uint32_t		dependenciesCount() const				INLINE { return E::get32(fields.dependenciesCount); }
+	//void			set_dependenciesCount(uint32_t value)	INLINE { E::set32(fields.dependenciesCount, value); }
 
 private:
 	dyld_cache_header			fields;
@@ -82,23 +67,23 @@ private:
 template <typename E>
 class dyldCacheFileMapping {
 public:		
-	uint64_t		address() const								INLINE { return E::get64(fields.address); }
-	void			set_address(uint64_t value)					INLINE { E::set64(fields.address, value); }
+	uint64_t		address() const								INLINE { return E::get64(fields.sfm_address); }
+	void			set_address(uint64_t value)					INLINE { E::set64(fields.sfm_address, value); }
 
-	uint64_t		size() const								INLINE { return E::get64(fields.size); }
-	void			set_size(uint64_t value)					INLINE { E::set64(fields.size, value); }
+	uint64_t		size() const								INLINE { return E::get64(fields.sfm_size); }
+	void			set_size(uint64_t value)					INLINE { E::set64(fields.sfm_size, value); }
 
-	uint64_t		file_offset() const							INLINE { return E::get64(fields.fileOffset); }
-	void			set_file_offset(uint64_t value)				INLINE { E::set64(fields.fileOffset, value); }
+	uint64_t		file_offset() const							INLINE { return E::get64(fields.sfm_file_offset); }
+	void			set_file_offset(uint64_t value)				INLINE { E::set64(fields.sfm_file_offset, value); }
 
-	uint32_t		max_prot() const							INLINE { return E::get32(fields.maxProt); }
-	void			set_max_prot(uint32_t value)				INLINE { E::set32((uint32_t&)fields.maxProt, value); }
+	uint32_t		max_prot() const							INLINE { return E::get32(fields.sfm_max_prot); }
+	void			set_max_prot(uint32_t value)				INLINE { E::set32((uint32_t&)fields.sfm_max_prot, value); }
 
-	uint32_t		init_prot() const							INLINE { return E::get32(fields.initProt); }
-	void			set_init_prot(uint32_t value)				INLINE { E::set32((uint32_t&)fields.initProt, value); }
+	uint32_t		init_prot() const							INLINE { return E::get32(fields.sfm_init_prot); }
+	void			set_init_prot(uint32_t value)				INLINE { E::set32((uint32_t&)fields.sfm_init_prot, value); }
 
 private:
-	dyld_cache_mapping_info			fields;
+	shared_file_mapping_np			fields;
 };
 
 
@@ -117,87 +102,12 @@ public:
 	uint32_t		pathFileOffset() const						INLINE { return E::get32(fields.pathFileOffset); }
 	void			set_pathFileOffset(uint32_t value)			INLINE { E::set32(fields.pathFileOffset, value); fields.pad=0; }
 
+	//uint32_t		dependenciesStartOffset() const				INLINE { return E::get32(fields.dependenciesStartOffset); }
+	//void			set_dependenciesStartOffset(uint32_t value)	INLINE { E::set32(fields.dependenciesStartOffset, value); }
+
 private:
 	dyld_cache_image_info			fields;
 };
-
-template <typename E>
-class dyldCacheSlideInfo {
-public:		
-	uint32_t		version() const								INLINE { return E::get32(fields.version); }
-	void			set_version(uint32_t value)					INLINE { E::set32(fields.version, value); }
-
-	uint32_t		toc_offset() const							INLINE { return E::get32(fields.toc_offset); }
-	void			set_toc_offset(uint32_t value)				INLINE { E::set32(fields.toc_offset, value); }
-
-	uint32_t		toc_count() const							INLINE { return E::get32(fields.toc_count); }
-	void			set_toc_count(uint32_t value)				INLINE { E::set32(fields.toc_count, value); }
-
-	uint32_t		entries_offset() const						INLINE { return E::get32(fields.entries_offset); }
-	void			set_entries_offset(uint32_t value)			INLINE { E::set32(fields.entries_offset, value); }
-	
-	uint32_t		entries_count() const						INLINE { return E::get32(fields.entries_count); }
-	void			set_entries_count(uint32_t value)			INLINE { E::set32(fields.entries_count, value); }
-
-	uint32_t		entries_size() const						INLINE { return E::get32(fields.entries_size); }
-	void			set_entries_size(uint32_t value)			INLINE { E::set32(fields.entries_size, value); }
-
-	uint16_t		toc(unsigned index) const					INLINE { return E::get16(((uint16_t*)(((uint8_t*)this)+E::get16(fields.toc_offset)))[index]); }
-	void			set_toc(unsigned index, uint16_t value) 	INLINE { return E::set16(((uint16_t*)(((uint8_t*)this)+E::get16(fields.toc_offset)))[index], value); }
-
-private:
-	dyld_cache_slide_info			fields;
-};
-
-
-struct dyldCacheSlideInfoEntry {
-	uint8_t  bits[4096/(8*4)]; // 128-byte bitmap
-};
-
-
-
-template <typename E>
-class dyldCacheLocalSymbolsInfo {
-public:		
-	uint32_t		nlistOffset() const							INLINE { return E::get32(fields.nlistOffset); }
-	void			set_nlistOffset(uint32_t value)				INLINE { E::set32(fields.nlistOffset, value); }
-
-	uint32_t		nlistCount() const							INLINE { return E::get32(fields.nlistCount); }
-	void			set_nlistCount(uint32_t value)				INLINE { E::set32(fields.nlistCount, value); }
-
-	uint32_t		stringsOffset() const						INLINE { return E::get32(fields.stringsOffset); }
-	void			set_stringsOffset(uint32_t value)			INLINE { E::set32(fields.stringsOffset, value); }
-	
-	uint32_t		stringsSize() const							INLINE { return E::get32(fields.stringsSize); }
-	void			set_stringsSize(uint32_t value)				INLINE { E::set32(fields.stringsSize, value); }
-
-	uint32_t		entriesOffset() const						INLINE { return E::get32(fields.entriesOffset); }
-	void			set_entriesOffset(uint32_t value)			INLINE { E::set32(fields.entriesOffset, value); }
-
-	uint32_t		entriesCount() const						INLINE { return E::get32(fields.entriesCount); }
-	void			set_entriesCount(uint32_t value)			INLINE { E::set32(fields.entriesCount, value); }
-
-private:
-	dyld_cache_local_symbols_info			fields;
-};
-
-
-template <typename E>
-class dyldCacheLocalSymbolEntry {
-public:		
-	uint32_t		dylibOffset() const							INLINE { return E::get32(fields.dylibOffset); }
-	void			set_dylibOffset(uint32_t value)				INLINE { E::set32(fields.dylibOffset, value); }
-
-	uint32_t		nlistStartIndex() const						INLINE { return E::get32(fields.nlistStartIndex); }
-	void			set_nlistStartIndex(uint32_t value)			INLINE { E::set32(fields.nlistStartIndex, value); }
-
-	uint32_t		nlistCount() const							INLINE { return E::get32(fields.nlistCount); }
-	void			set_nlistCount(uint32_t value)				INLINE { E::set32(fields.nlistCount, value); }
-	
-private:
-	dyld_cache_local_symbols_entry			fields;
-};
-
 
 
 

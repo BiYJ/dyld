@@ -1,6 +1,6 @@
 /* -*- mode: C++; c-basic-offset: 4; tab-width: 4 -*-
  *
- * Copyright (c) 2004-2012 Apple Inc. All rights reserved.
+ * Copyright (c) 2004-2007 Apple Inc. All rights reserved.
  *
  * @APPLE_LICENSE_HEADER_START@
  * 
@@ -24,60 +24,15 @@
 
 #include <stddef.h>
 #include <string.h>
-#include <malloc/malloc.h>
-#include <sys/mman.h>
-
 #include <crt_externs.h>
-#include <Availability.h>
-#include <vproc_priv.h>
 
 #include "mach-o/dyld.h"
 #include "mach-o/dyld_priv.h"
 
-#include "ImageLoader.h"
 #include "dyldLock.h"
-#include "start_glue.h"
 
-extern "C" int  __cxa_atexit(void (*func)(void *), void *arg, void *dso);
-extern "C" void __cxa_finalize(const void *dso);
-extern "C" void __cxa_finalize_ranges(const struct __cxa_range_t ranges[], int count);
+extern "C" int __cxa_atexit(void (*func)(void *), void *arg, void *dso);
 
-
-#ifndef LC_VERSION_MIN_MACOSX
-	#define LC_VERSION_MIN_MACOSX 0x24
-	struct version_min_command {
-		uint32_t	cmd;		/* LC_VERSION_MIN_MACOSX or
-					   LC_VERSION_MIN_IPHONEOS  */
-		uint32_t	cmdsize;	/* sizeof(struct min_version_command) */
-		uint32_t	version;	/* X.Y.Z is encoded in nibbles xxxx.yy.zz */
-		uint32_t	sdk;		/* X.Y.Z is encoded in nibbles xxxx.yy.zz */
-	};
-#endif
-
-#ifndef LC_VERSION_MIN_IPHONEOS
-	#define LC_VERSION_MIN_IPHONEOS 0x25
-#endif
-
-#ifndef LC_VERSION_MIN_TVOS
-	#define LC_VERSION_MIN_TVOS 0x2F
-#endif
-
-#ifndef LC_VERSION_MIN_WATCHOS
-	#define LC_VERSION_MIN_WATCHOS 0x30
-#endif
-
-
-#ifndef LC_LOAD_UPWARD_DYLIB
-	#define	LC_LOAD_UPWARD_DYLIB (0x23|LC_REQ_DYLD)	/* load of dylib whose initializers run later */
-#endif
-
-
-// deprecated APIs are still availble on Mac OS X, but not on iPhone OS
-#if __IPHONE_OS_VERSION_MIN_REQUIRED	
-	#define DEPRECATED_APIS_SUPPORTED 0
-#else
-	#define DEPRECATED_APIS_SUPPORTED 1
-#endif
 
 /*
  * names_match() takes an install_name from an LC_LOAD_DYLIB command and a
@@ -88,10 +43,10 @@ extern "C" void __cxa_finalize_ranges(const struct __cxa_range_t ranges[], int c
 static
 bool
 names_match(
-const char *install_name,
+char *install_name,
 const char* libraryName)
 {
-    const char *basename;
+    char *basename;
     unsigned long n;
 
 	/*
@@ -112,7 +67,7 @@ const char* libraryName)
 	 * of the -framework cases.
 	 */
 	if(strcmp(basename, libraryName) == 0)
-	    return true;
+	    return(TRUE);
 
 	/*
 	 * Now check the base name for "lib" if so proceed to check for the
@@ -122,32 +77,29 @@ const char* libraryName)
 	    n = strlen(libraryName);
 	    if(strncmp(basename+3, libraryName, n) == 0){
 		if(strncmp(basename+3+n, ".dylib", 6) == 0)
-		    return true;
+		    return(TRUE);
 		if(basename[3+n] == '.' &&
 		   basename[3+n+1] != '\0' &&
 		   strncmp(basename+3+n+2, ".dylib", 6) == 0)
-		    return true;
+		    return(TRUE);
 	    }
 	}
-	return false;
+	return(FALSE);
 }
-
-#if DEPRECATED_APIS_SUPPORTED
 
 void NSInstallLinkEditErrorHandlers(
 const NSLinkEditErrorHandlers* handlers)
 {
 	DYLD_LOCK_THIS_BLOCK;
-	typedef void (*ucallback_t)(const char* symbol_name);
- 	typedef NSModule (*mcallback_t)(NSSymbol s, NSModule old, NSModule newhandler);
-	typedef void (*lcallback_t)(NSLinkEditErrors c, int errorNumber,
-								const char* fileName, const char* errorString);
-	static void (*p)(ucallback_t undefined, mcallback_t multiple, lcallback_t linkEdit) = NULL;
+    static void (*p)(
+	void     (*undefined)(const char* symbol_name),
+	NSModule (*multiple)(NSSymbol s, NSModule old, NSModule newhandler),
+	void     (*linkEdit)(NSLinkEditErrors c, int errorNumber,
+		     const char* fileName, const char* errorString)) = NULL;
 
 	if(p == NULL)
 	    _dyld_func_lookup("__dyld_install_handlers", (void**)&p);
-	mcallback_t m = handlers->multiple;
-	p(handlers->undefined, m, handlers->linkEdit);
+	p(handlers->undefined, handlers->multiple, handlers->linkEdit);
 }
 
 const char* 
@@ -342,7 +294,6 @@ uint32_t options)
 	    _dyld_func_lookup("__dyld_NSAddImage", (void**)&p);
 	return(p(image_name, options));
 }
-#endif // DEPRECATED_APIS_SUPPORTED
 
 /*
  * This routine returns the current version of the named shared library the
@@ -355,35 +306,41 @@ uint32_t options)
  * and not a list of current versions that dependent libraries and bundles the
  * program is using were built with.
  */
-int32_t NSVersionOfLinkTimeLibrary(const char* libraryName)
+int32_t
+NSVersionOfLinkTimeLibrary(
+const char* libraryName)
 {
-	// Lazily call _NSGetMachExecuteHeader() and cache result
+    unsigned long i;
+    struct load_command *load_commands, *lc;
+    struct dylib_command *dl;
+    char *install_name;
 #if __LP64__
-    static mach_header_64* mh = NULL;
+    static struct mach_header_64 *mh = NULL;
 #else
-    static mach_header* mh = NULL;
+    static struct mach_header *mh = NULL;
 #endif
-	if ( mh == NULL )
+	if(mh == NULL)
 	    mh = _NSGetMachExecuteHeader();
+	load_commands = (struct load_command *)
 #if __LP64__
-	const load_command* lc = (load_command*)((char*)mh + sizeof(mach_header_64));
+			    ((char *)mh + sizeof(struct mach_header_64));
 #else
-	const load_command* lc = (load_command*)((char*)mh + sizeof(mach_header));
+			    ((char *)mh + sizeof(struct mach_header));
 #endif
-	for(uint32_t i = 0; i < mh->ncmds; i++){
+	lc = load_commands;
+	for(i = 0; i < mh->ncmds; i++){
 		switch ( lc->cmd ) { 
 			case LC_LOAD_DYLIB:
 			case LC_LOAD_WEAK_DYLIB:
-			case LC_LOAD_UPWARD_DYLIB:
-				const dylib_command* dl = (dylib_command *)lc;
-				const char* install_name = (char*)dl + dl->dylib.name.offset;
-				if ( names_match(install_name, libraryName) )
-					return dl->dylib.current_version;
+				dl = (struct dylib_command *)lc;
+				install_name = (char *)dl + dl->dylib.name.offset;
+				if(names_match(install_name, libraryName) == TRUE)
+					return(dl->dylib.current_version);
 				break;
 		}
-	    lc = (load_command*)((char*)lc + lc->cmdsize);
+	    lc = (struct load_command *)((char *)lc + lc->cmdsize);
 	}
-	return (-1);
+	return(-1);
 }
 
 /*
@@ -393,305 +350,41 @@ int32_t NSVersionOfLinkTimeLibrary(const char* libraryName)
  * it would be "x" and with -framework Foo it would be "Foo").  If the program
  * is not using the specified library it returns -1.
  */
-int32_t NSVersionOfRunTimeLibrary(const char* libraryName)
+int32_t
+NSVersionOfRunTimeLibrary(
+const char* libraryName)
 {
-	uint32_t n = _dyld_image_count();
-	for(uint32_t i = 0; i < n; i++){
-	    const mach_header* mh = _dyld_get_image_header(i);
-		if ( mh == NULL )
-			continue;
-	    if ( mh->filetype != MH_DYLIB )
-			continue;
+    unsigned long i, j, n;
+    char *install_name;
+    struct load_command *load_commands, *lc;
+    struct dylib_command *dl;
+    const struct mach_header *mh;
+
+	n = _dyld_image_count();
+	for(i = 0; i < n; i++){
+	    mh = _dyld_get_image_header(i);
+	    if(mh->filetype != MH_DYLIB)
+		continue;
+	    load_commands = (struct load_command *)
 #if __LP64__
-	    const load_command* lc = (load_command*)((char*)mh + sizeof(mach_header_64));
+			    ((char *)mh + sizeof(struct mach_header_64));
 #else
-	    const load_command* lc = (load_command*)((char*)mh + sizeof(mach_header));
+			    ((char *)mh + sizeof(struct mach_header));
 #endif
-	    for(uint32_t j = 0; j < mh->ncmds; j++){
-			if ( lc->cmd == LC_ID_DYLIB ) {
-				const dylib_command* dl = (dylib_command*)lc;
-				const char* install_name = (char *)dl + dl->dylib.name.offset;
-				if ( names_match(install_name, libraryName) )
-					return dl->dylib.current_version;
-			}
-			lc = (load_command*)((char*)lc + lc->cmdsize);
+	    lc = load_commands;
+	    for(j = 0; j < mh->ncmds; j++){
+		if(lc->cmd == LC_ID_DYLIB){
+		    dl = (struct dylib_command *)lc;
+		    install_name = (char *)dl + dl->dylib.name.offset;
+		    if(names_match(install_name, libraryName) == TRUE)
+			return(dl->dylib.current_version);
+		}
+		lc = (struct load_command *)((char *)lc + lc->cmdsize);
 	    }
 	}
-	return (-1);
+	return(-1);
 }
 
-
-#define PACKED_VERSION(major, minor, tiny) ((((major) & 0xffff) << 16) | (((minor) & 0xff) << 8) | ((tiny) & 0xff))
-
-
-static bool getVersionLoadCommandInfo(const mach_header* mh, uint32_t* loadCommand, uint32_t* minOS, uint32_t* sdk)
-{
-	const load_command* startCmds = NULL;
-	if ( mh->magic == MH_MAGIC_64 )
-		startCmds = (load_command*)((char *)mh + sizeof(mach_header_64));
-	else if ( mh->magic == MH_MAGIC )
-		startCmds = (load_command*)((char *)mh + sizeof(mach_header));
-	else
-		return false;  // not a mach-o file, or wrong endianness
-		
-	const load_command* const cmdsEnd = (load_command*)((char*)startCmds + mh->sizeofcmds);
-	const load_command* cmd = startCmds;
-	for(uint32_t i = 0; i < mh->ncmds; ++i) {
-	    const load_command* nextCmd = (load_command*)((char *)cmd + cmd->cmdsize);
-		if ( (cmd->cmdsize < 8) || (nextCmd > cmdsEnd) || (nextCmd < startCmds)) {
-			return 0;
-		}
-		const version_min_command* versCmd;
-		switch ( cmd->cmd ) {
-			case LC_VERSION_MIN_IPHONEOS:
-			case LC_VERSION_MIN_MACOSX:
-			case LC_VERSION_MIN_TVOS:
-			case LC_VERSION_MIN_WATCHOS:
-				versCmd = (version_min_command*)cmd;
-				*loadCommand = versCmd->cmd;
-				*minOS = versCmd->version;
-				*sdk = versCmd->sdk;
-				return true;
-		}
-		cmd = nextCmd;
-	}
-	return false;
-}
-
-#if !__WATCH_OS_VERSION_MIN_REQUIRED && !__TV_OS_VERSION_MIN_REQUIRED
-static uint32_t deriveSDKVersFromDylibs(const mach_header* mh)
-{
-	const load_command* startCmds = NULL;
-	if ( mh->magic == MH_MAGIC_64 )
-		startCmds = (load_command*)((char *)mh + sizeof(mach_header_64));
-	else if ( mh->magic == MH_MAGIC )
-		startCmds = (load_command*)((char *)mh + sizeof(mach_header));
-	else
-		return 0;  // not a mach-o file, or wrong endianness
-		
-	const load_command* const cmdsEnd = (load_command*)((char*)startCmds + mh->sizeofcmds);
-	const dylib_command* dylibCmd;
-	const load_command* cmd = startCmds;
-	const char* dylibName;
-  #if __IPHONE_OS_VERSION_MIN_REQUIRED
-	uint32_t foundationVers = 0;
-  #else
-	uint32_t libSystemVers = 0;
-  #endif
-	for(uint32_t i = 0; i < mh->ncmds; ++i) {
-	    const load_command* nextCmd = (load_command*)((char *)cmd + cmd->cmdsize);
-		// <rdar://problem/14381579&16050962> sanity check size of command
-		if ( (cmd->cmdsize < 8) || (nextCmd > cmdsEnd) || (nextCmd < startCmds)) {
-			return 0;
-		}
-		switch ( cmd->cmd ) {
-			case LC_LOAD_DYLIB:
-			case LC_LOAD_WEAK_DYLIB:
-			case LC_LOAD_UPWARD_DYLIB:
-				dylibCmd = (dylib_command*)cmd;
-				// sanity check dylib command layout
-				if ( dylibCmd->dylib.name.offset > cmd->cmdsize )
-					return 0;
-				dylibName = (char*)dylibCmd + dylibCmd->dylib.name.offset;
-  #if __IPHONE_OS_VERSION_MIN_REQUIRED
-				if ( strcmp(dylibName, "/System/Library/Frameworks/Foundation.framework/Foundation") == 0 )
-					foundationVers = dylibCmd->dylib.current_version;
-  #else
-				if ( strcmp(dylibName, "/usr/lib/libSystem.B.dylib") == 0 )
-					libSystemVers = dylibCmd->dylib.current_version;
-  #endif
-				break;
-		}
-		cmd = nextCmd;
-	}
-
-	struct DylibToOSMapping {
-		uint32_t dylibVersion;
-		uint32_t osVersion;
-	};
-	
-  #if __IPHONE_OS_VERSION_MIN_REQUIRED
-	static const DylibToOSMapping foundationMapping[] = {
-		{ PACKED_VERSION(678,24,0), DYLD_IOS_VERSION_2_0 },
-		{ PACKED_VERSION(678,26,0), DYLD_IOS_VERSION_2_1 },
-		{ PACKED_VERSION(678,29,0), DYLD_IOS_VERSION_2_2 },
-		{ PACKED_VERSION(678,47,0), DYLD_IOS_VERSION_3_0 },
-		{ PACKED_VERSION(678,51,0), DYLD_IOS_VERSION_3_1 },
-		{ PACKED_VERSION(678,60,0), DYLD_IOS_VERSION_3_2 },
-		{ PACKED_VERSION(751,32,0), DYLD_IOS_VERSION_4_0 },
-		{ PACKED_VERSION(751,37,0), DYLD_IOS_VERSION_4_1 },
-		{ PACKED_VERSION(751,49,0), DYLD_IOS_VERSION_4_2 },
-		{ PACKED_VERSION(751,58,0), DYLD_IOS_VERSION_4_3 },
-		{ PACKED_VERSION(881,0,0),  DYLD_IOS_VERSION_5_0 },
-		{ PACKED_VERSION(890,1,0),  DYLD_IOS_VERSION_5_1 },
-		{ PACKED_VERSION(992,0,0),  DYLD_IOS_VERSION_6_0 },
-		{ PACKED_VERSION(993,0,0),  DYLD_IOS_VERSION_6_1 },  
-		{ PACKED_VERSION(1038,14,0),DYLD_IOS_VERSION_7_0 },
-		{ PACKED_VERSION(0,0,0),    DYLD_IOS_VERSION_7_0 }
-		// We don't need to expand this table because all recent
-		// binaries have LC_VERSION_MIN_ load command.
-	};
-
-	if ( foundationVers != 0 ) {
-		uint32_t lastOsVersion = 0;
-		for (const DylibToOSMapping* p=foundationMapping; ; ++p) {
-			if ( p->dylibVersion == 0 )
-				return p->osVersion;
-			if ( foundationVers < p->dylibVersion )
-				return lastOsVersion;
-			lastOsVersion = p->osVersion;
-		}
-	}
-
-  #else
-	// Note: versions are for the GM release.  The last entry should
-	// always be zero.  At the start of the next major version,
-	// a new last entry needs to be added and the previous zero
-	// updated to the GM dylib version.
-	static const DylibToOSMapping libSystemMapping[] = {
-		{ PACKED_VERSION(88,1,3),   DYLD_MACOSX_VERSION_10_4 },
-		{ PACKED_VERSION(111,0,0),  DYLD_MACOSX_VERSION_10_5 },
-		{ PACKED_VERSION(123,0,0),  DYLD_MACOSX_VERSION_10_6 },
-		{ PACKED_VERSION(159,0,0),  DYLD_MACOSX_VERSION_10_7 },
-		{ PACKED_VERSION(169,3,0),  DYLD_MACOSX_VERSION_10_8 },
-		{ PACKED_VERSION(1197,0,0), DYLD_MACOSX_VERSION_10_9 },
-		{ PACKED_VERSION(0,0,0),    DYLD_MACOSX_VERSION_10_9 }
-		// We don't need to expand this table because all recent
-		// binaries have LC_VERSION_MIN_ load command.
-	};
-
-	if ( libSystemVers != 0 ) {
-		uint32_t lastOsVersion = 0;
-		for (const DylibToOSMapping* p=libSystemMapping; ; ++p) {
-			if ( p->dylibVersion == 0 )
-				return p->osVersion;
-			if ( libSystemVers < p->dylibVersion )
-				return lastOsVersion;
-			lastOsVersion = p->osVersion;
-		}
-	}
-  #endif
-  return 0;
-}
-#endif
-
-
-#if __WATCH_OS_VERSION_MIN_REQUIRED
-static uint32_t watchVersToIOSVers(uint32_t vers)
-{
-	return vers + 0x00070000;
-}
-
-uint32_t dyld_get_program_sdk_watch_os_version()
-{
-	const mach_header* mh = (mach_header*)_NSGetMachExecuteHeader();
-	uint32_t loadCommand;
-	uint32_t minOS;
-	uint32_t sdk;
-
-	if ( getVersionLoadCommandInfo(mh, &loadCommand, &minOS, &sdk) ) {
-		if ( loadCommand == LC_VERSION_MIN_WATCHOS )
-				return sdk;
-	}
-	return 0;
-}
-#endif
-
-/*
- * Returns the sdk version (encode as nibble XXXX.YY.ZZ) the
- * specified binary was built against.
- *
- * First looks for LC_VERSION_MIN_* in binary and if sdk field is 
- * not zero, return that value.
- * Otherwise, looks for the libSystem.B.dylib the binary linked
- * against and uses a table to convert that to an sdk version.
- */
-uint32_t dyld_get_sdk_version(const mach_header* mh)
-{
-	uint32_t loadCommand;
-	uint32_t minOS;
-	uint32_t sdk;
-
-	if ( getVersionLoadCommandInfo(mh, &loadCommand, &minOS, &sdk) ) {
-		switch (loadCommand) {
-#if __WATCH_OS_VERSION_MIN_REQUIRED
-			case LC_VERSION_MIN_WATCHOS:
-				// new binary. sdk version looks like "2.0" but API wants "9.0"
-				return watchVersToIOSVers(sdk);
-			case LC_VERSION_MIN_IPHONEOS:
-				// old binary. sdk matches API semantics so can return directly.
-				return sdk;
-#elif __TV_OS_VERSION_MIN_REQUIRED
-			case LC_VERSION_MIN_TVOS:
-			case LC_VERSION_MIN_IPHONEOS:
-				return sdk;
-#elif __IPHONE_OS_VERSION_MIN_REQUIRED
-			case LC_VERSION_MIN_IPHONEOS:
-				if ( sdk != 0 )	// old binaries might not have SDK set
-					return sdk;
-				break;
-#else
-			case LC_VERSION_MIN_MACOSX:
-				if ( sdk != 0 )	// old binaries might not have SDK set
-					return sdk;
-				break;
-#endif
-		}
-	}
-
-#if __WATCH_OS_VERSION_MIN_REQUIRED ||__TV_OS_VERSION_MIN_REQUIRED
-	// All WatchOS and tv OS binaries should have version load command.
-	return 0;
-#else
-	// MacOSX and iOS have old binaries without version load commmand.
-	return deriveSDKVersFromDylibs(mh);
-#endif
-}
-
-uint32_t dyld_get_program_sdk_version()
-{
-	return dyld_get_sdk_version((mach_header*)_NSGetMachExecuteHeader());
-}
-
-uint32_t dyld_get_min_os_version(const struct mach_header* mh)
-{
-	uint32_t loadCommand;
-	uint32_t minOS;
-	uint32_t sdk;
-
-	if ( getVersionLoadCommandInfo(mh, &loadCommand, &minOS, &sdk) ) {
-		switch (loadCommand) {
-#if __WATCH_OS_VERSION_MIN_REQUIRED
-			case LC_VERSION_MIN_WATCHOS:
-				// new binary. OS version looks like "2.0" but API wants "9.0"
-				return watchVersToIOSVers(minOS);
-			case LC_VERSION_MIN_IPHONEOS:
-				// old binary. OS matches API semantics so can return directly.
-				return minOS;
-#elif __TV_OS_VERSION_MIN_REQUIRED
-			case LC_VERSION_MIN_TVOS:
-			case LC_VERSION_MIN_IPHONEOS:
-				return minOS;
-#elif __IPHONE_OS_VERSION_MIN_REQUIRED
-			case LC_VERSION_MIN_IPHONEOS:
-				return minOS;
-#else
-			case LC_VERSION_MIN_MACOSX:
-				return minOS;
-#endif
-		}
-	}
-	return 0;
-}
-
-
-uint32_t dyld_get_program_min_os_version()
-{
-	return dyld_get_min_os_version((mach_header*)_NSGetMachExecuteHeader());
-}
-
-
-#if DEPRECATED_APIS_SUPPORTED
 /*
  * NSCreateObjectFileImageFromFile() creates an NSObjectFileImage for the
  * specified file name if the file is a correct Mach-O file that can be loaded
@@ -784,6 +477,31 @@ uint32_t options)
 }
 
 
+/*
+ * NSFindSectionAndOffsetInObjectFileImage() takes the specified imageOffset
+ * into the specified ObjectFileImage and returns the segment/section name and
+ * offset into that section of that imageOffset.  Returns FALSE if the
+ * imageOffset is not in any section.  You can used the resulting sectionOffset
+ * to index into the data returned by NSGetSectionDataInObjectFileImage.
+ * 
+ * SPI: currently only used by ZeroLink to detect +load methods
+ */
+bool 
+NSFindSectionAndOffsetInObjectFileImage(
+NSObjectFileImage objectFileImage, 
+unsigned long imageOffset,
+const char** segmentName, 	/* can be NULL */
+const char** sectionName, 	/* can be NULL */
+unsigned long* sectionOffset)	/* can be NULL */
+{
+	DYLD_LOCK_THIS_BLOCK;
+    static bool (*p)(NSObjectFileImage, unsigned long, const char**, const char**, unsigned long*) = NULL;
+
+	if(p == NULL)
+	    _dyld_func_lookup("__dyld_NSFindSectionAndOffsetInObjectFileImage", (void**)&p);
+		
+	return p(objectFileImage, imageOffset, segmentName, sectionName, sectionOffset);
+}
 
 
 /*
@@ -902,6 +620,24 @@ unsigned long *size) /* can be NULL */
 	return p(objectFileImage, segmentName, sectionName, size);
 }
 
+/*
+ * NSHasModInitObjectFileImage() returns TRUE if the NSObjectFileImage has any
+ * module initialization sections and FALSE it it does not.
+ *
+ * SPI: currently only used by ZeroLink to detect C++ initializers
+ */
+bool
+NSHasModInitObjectFileImage(
+NSObjectFileImage objectFileImage)
+{
+	DYLD_LOCK_THIS_BLOCK;
+    static bool (*p)(NSObjectFileImage) = NULL;
+
+	if(p == NULL)
+	    _dyld_func_lookup("__dyld_NSHasModInitObjectFileImage", (void**)&p);
+		
+	return p(objectFileImage);
+}
 
 void
 NSLinkEditError(
@@ -947,9 +683,6 @@ uint32_t options)
 }
 #endif
 
-
-#endif // DEPRECATED_APIS_SUPPORTED
-
 /*
  *_NSGetExecutablePath copies the path of the executable into the buffer and
  * returns 0 if the path was successfully copied in the provided buffer. If the
@@ -972,7 +705,6 @@ uint32_t *bufsize)
 	return(p(buf, bufsize));
 }
 
-#if DEPRECATED_APIS_SUPPORTED
 void
 _dyld_lookup_and_bind(
 const char* symbol_name,
@@ -1043,7 +775,6 @@ const void* address)
 	    _dyld_func_lookup("__dyld_bind_fully_image_containing_address", (void**)&p);
 	return p(address);
 }
-#endif // DEPRECATED_APIS_SUPPORTED
 
 
 /*
@@ -1057,8 +788,7 @@ _dyld_register_func_for_add_image(
 void (*func)(const struct mach_header *mh, intptr_t vmaddr_slide))
 {
 	DYLD_LOCK_THIS_BLOCK;
-	typedef void (*callback_t)(const struct mach_header *mh, intptr_t vmaddr_slide);
-    static void (*p)(callback_t func) = NULL;
+    static void (*p)(void (*func)(const struct mach_header *mh, intptr_t vmaddr_slide)) = NULL;
 
 	if(p == NULL)
 	    _dyld_func_lookup("__dyld_register_func_for_add_image", (void**)&p);
@@ -1075,8 +805,7 @@ _dyld_register_func_for_remove_image(
 void (*func)(const struct mach_header *mh, intptr_t vmaddr_slide))
 {
 	DYLD_LOCK_THIS_BLOCK;
-	typedef void (*callback_t)(const struct mach_header *mh, intptr_t vmaddr_slide);
-    static void (*p)(callback_t func) = NULL;
+    static void (*p)(void (*func)(const struct mach_header *mh, intptr_t vmaddr_slide)) = NULL;
 
 	if(p == NULL)
 	    _dyld_func_lookup("__dyld_register_func_for_remove_image", (void**)&p);
@@ -1174,20 +903,18 @@ _dyld_bind_objc_module(const void* objc_module)
 }
 #endif
 
-#if DEPRECATED_APIS_SUPPORTED
 bool
 _dyld_present(void)
 {
 	// this function exists for compatiblity only
 	return true;
 }
-#endif
 
 uint32_t
 _dyld_image_count(void)
 {
 	DYLD_NO_LOCK_THIS_BLOCK;
-    static uint32_t (*p)(void) = NULL;
+    static unsigned long (*p)(void) = NULL;
 
 	if(p == NULL)
 	    _dyld_func_lookup("__dyld_image_count", (void**)&p);
@@ -1227,18 +954,6 @@ _dyld_get_image_name(uint32_t image_index)
 	return(p(image_index));
 }
 
-// SPI in Mac OS X 10.6
-intptr_t _dyld_get_image_slide(const struct mach_header* mh)
-{
-	DYLD_NO_LOCK_THIS_BLOCK;
-    static intptr_t (*p)(const struct mach_header*) = NULL;
-
-	if(p == NULL)
-	    _dyld_func_lookup("__dyld_get_image_slide", (void**)&p);
-	return(p(mh));
-}
-
-
 bool
 _dyld_image_containing_address(const void* address)
 {
@@ -1262,8 +977,17 @@ const void* address)
 	return p(address);
 }
 
+void _dyld_moninit(
+void (*monaddition)(char *lowpc, char *highpc))
+{
+	DYLD_LOCK_THIS_BLOCK;
+    static void (*p)(void (*monaddition)(char *lowpc, char *highpc)) = NULL;
 
-#if DEPRECATED_APIS_SUPPORTED
+	if(p == NULL)
+	    _dyld_func_lookup("__dyld_moninit", (void**)&p);
+	p(monaddition);
+}
+
 bool _dyld_launched_prebound(void)
 {
 	DYLD_LOCK_THIS_BLOCK;
@@ -1283,7 +1007,6 @@ bool _dyld_all_twolevel_modules_prebound(void)
 	    _dyld_func_lookup("__dyld_all_twolevel_modules_prebound", (void**)&p);
 	return(p());
 }
-#endif // DEPRECATED_APIS_SUPPORTED
 
 
 #include <dlfcn.h>
@@ -1293,6 +1016,7 @@ bool _dyld_all_twolevel_modules_prebound(void)
 #include <mach-o/dyld.h>
 #include <servers/bootstrap.h>
 #include "dyldLibSystemInterface.h"
+#include "dyld_shared_cache_user.h"
 
 
 // pthread key used to access per-thread dlerror message
@@ -1302,12 +1026,12 @@ static bool dlerrorPerThreadKeyInitialized = false;
 // data kept per-thread
 struct dlerrorPerThreadData
 {
-	size_t		sizeAllocated;
+	uint32_t	sizeAllocated;
 	char		message[1];
 };
 
 // function called by dyld to get buffer to store dlerror message
-static char* getPerThreadBufferFor_dlerror(size_t sizeRequired)
+static char* getPerThreadBufferFor_dlerror(uint32_t sizeRequired)
 {
 	// ok to create key lazily because this function is called within dyld lock, so there is no race condition
 	if (!dlerrorPerThreadKeyInitialized ) {
@@ -1316,11 +1040,11 @@ static char* getPerThreadBufferFor_dlerror(size_t sizeRequired)
 		dlerrorPerThreadKeyInitialized = true;
 	}
 
-	const size_t size = (sizeRequired < 256) ? 256 : sizeRequired;
+	const int size = (sizeRequired < 256) ? 256 : sizeRequired;
 	dlerrorPerThreadData* data = (dlerrorPerThreadData*)pthread_getspecific(dlerrorPerThreadKey);
 	if ( data == NULL ) {
 		//int mallocSize = offsetof(dlerrorPerThreadData, message[size]);
-		const size_t mallocSize = sizeof(dlerrorPerThreadData)+size;
+		const int mallocSize = sizeof(dlerrorPerThreadData)+size;
 		data = (dlerrorPerThreadData*)malloc(mallocSize);
 		data->sizeAllocated = size;
 		pthread_setspecific(dlerrorPerThreadKey, data);
@@ -1328,7 +1052,7 @@ static char* getPerThreadBufferFor_dlerror(size_t sizeRequired)
 	else if ( data->sizeAllocated < sizeRequired ) {
 		free(data);
 		//int mallocSize = offsetof(dlerrorPerThreadData, message[size]);
-		const size_t mallocSize = sizeof(dlerrorPerThreadData)+size;
+		const int mallocSize = sizeof(dlerrorPerThreadData)+size;
 		data = (dlerrorPerThreadData*)malloc(mallocSize);
 		data->sizeAllocated = size;
 		pthread_setspecific(dlerrorPerThreadKey, data);
@@ -1336,82 +1060,71 @@ static char* getPerThreadBufferFor_dlerror(size_t sizeRequired)
 	return data->message;
 }
 
-// <rdar://problem/10595338> dlerror buffer leak
-// Only allocate buffer if an actual error message needs to be set
-static bool hasPerThreadBufferFor_dlerror()
+
+
+static bool get_update_dyld_shared_cache_bootstrap_port(mach_port_t& mp)
 {
-	if (!dlerrorPerThreadKeyInitialized ) 
-		return false;
-		
-	return (pthread_getspecific(dlerrorPerThreadKey) != NULL);
-}
-
-// use non-lazy pointer to vproc_swap_integer so that lazy binding does not recurse
-typedef vproc_err_t (*vswapproc)(vproc_t vp, vproc_gsk_t key,int64_t *inval, int64_t *outval);
-static vswapproc swapProc = &vproc_swap_integer;
-
-static bool isLaunchdOwned() {
-	static bool first = true;
-	static bool result;
-	if ( first ) {
-		int64_t val = 0;
-		(*swapProc)(NULL, VPROC_GSK_IS_MANAGED, NULL, &val);
-		result = ( val != 0 );
-		first = false;
+	static bool found = false;
+	static mach_port_t port;
+	if ( found ) {
+		mp = port;
+		return true;
 	}
-	return result;
+	if ( bootstrap_look_up(bootstrap_port, "com.apple.dyld", &port) == KERN_SUCCESS ) {
+		found = true;
+		mp = port;
+		return true;
+	}
+	return false;
 }
 
+#if __ppc__
+	#define CUR_ARCH	CPU_TYPE_POWERPC
+#elif __ppc64__
+	#define CUR_ARCH	CPU_TYPE_POWERPC64
+#elif __i386__
+	#define CUR_ARCH	CPU_TYPE_I386
+#elif __x86_64__
+	#define CUR_ARCH	CPU_TYPE_X86_64
+#endif
 
-#if DYLD_SHARED_CACHE_SUPPORT
 static void shared_cache_missing()
 {
-	// leave until dyld's that might call this are rare
+	mach_port_t mp;
+	if ( get_update_dyld_shared_cache_bootstrap_port(mp) )
+		dyld_shared_cache_missing(mp, CUR_ARCH, 0);
 }
 
 static void shared_cache_out_of_date()
 {
-	// leave until dyld's that might call this are rare
+	mach_port_t mp;
+	if ( get_update_dyld_shared_cache_bootstrap_port(mp) )
+		dyld_shared_cache_out_of_date(mp, CUR_ARCH, 0);
 }
-#endif // DYLD_SHARED_CACHE_SUPPORT
 
 
-// the table passed to dyld containing thread helpers
-static dyld::LibSystemHelpers sHelpers = { 13, &dyldGlobalLockAcquire, &dyldGlobalLockRelease,
+
+// that table passed to dyld containing thread helpers
+static dyld::LibSystemHelpers sHelpers = { 4, &dyldGlobalLockAcquire, &dyldGlobalLockRelease,  
 									&getPerThreadBufferFor_dlerror, &malloc, &free, &__cxa_atexit,
-						#if DYLD_SHARED_CACHE_SUPPORT
 									&shared_cache_missing, &shared_cache_out_of_date,
-						#else
-									NULL, NULL,
-						#endif
-									NULL, NULL,
-									&pthread_key_create, &pthread_setspecific,
-									&malloc_size,
-									&pthread_getspecific,
-									&__cxa_finalize,
-									address_of_start,
-									&hasPerThreadBufferFor_dlerror,
-									&isLaunchdOwned,
-									&vm_allocate,
-									&mmap,
-									&__cxa_finalize_ranges};
+									NULL, NULL };
 
 
 //
 // during initialization of libSystem this routine will run
 // and call dyld, registering the helper functions.
 //
-extern "C" void tlv_initializer();
-extern "C" void _dyld_initializer();
+extern "C" void _dyld_initializer() __attribute__((visibility("hidden")));
 void _dyld_initializer()
-{	
+{
+	DYLD_LOCK_INITIALIZER;
+	
    void (*p)(dyld::LibSystemHelpers*);
 
 	_dyld_func_lookup("__dyld_register_thread_helpers", (void**)&p);
 	if(p != NULL)
 		p(&sHelpers);
-		
-	tlv_initializer();
 }
 
 
@@ -1494,119 +1207,6 @@ void dyld_register_image_state_change_handler(dyld_image_states state,
 	p(state, batch, handler);
 }
 
-
-const struct dyld_all_image_infos* _dyld_get_all_image_infos()
-{
-	DYLD_NO_LOCK_THIS_BLOCK;
-    static struct dyld_all_image_infos* (*p)() = NULL;
-
-	if(p == NULL)
-	    _dyld_func_lookup("__dyld_get_all_image_infos", (void**)&p);
-	return p();
-}
-
-#if SUPPORT_ZERO_COST_EXCEPTIONS
-bool _dyld_find_unwind_sections(void* addr, dyld_unwind_sections* info)
-{
-	DYLD_NO_LOCK_THIS_BLOCK;
-    static void* (*p)(void*, dyld_unwind_sections*) = NULL;
-
-	if(p == NULL)
-	    _dyld_func_lookup("__dyld_find_unwind_sections", (void**)&p);
-	return p(addr, info);
-}
-#endif
-
-
-#if __i386__ || __x86_64__ || __arm__ || __arm64__
-__attribute__((visibility("hidden"))) 
-void* _dyld_fast_stub_entry(void* loadercache, long lazyinfo)
-{
-	DYLD_NO_LOCK_THIS_BLOCK;
-    static void* (*p)(void*, long) = NULL;
-
-	if(p == NULL)
-	    _dyld_func_lookup("__dyld_fast_stub_entry", (void**)&p);
-	return p(loadercache, lazyinfo);
-}
-#endif
-
-
-const char* dyld_image_path_containing_address(const void* addr)
-{
-	DYLD_NO_LOCK_THIS_BLOCK;
-    static const char* (*p)(const void*) = NULL;
-
-	if(p == NULL)
-	    _dyld_func_lookup("__dyld_image_path_containing_address", (void**)&p);
-	return p(addr);
-}
-
-const struct mach_header* dyld_image_header_containing_address(const void* addr)
-{
-	DYLD_NO_LOCK_THIS_BLOCK;
-    static const mach_header* (*p)(const void*) = NULL;
-
-	if(p == NULL)
-	    _dyld_func_lookup("__dyld_get_image_header_containing_address", (void**)&p);
-	return p(addr);
-}
-
-
-bool dyld_shared_cache_some_image_overridden()
-{
-	DYLD_NO_LOCK_THIS_BLOCK;
-    static bool (*p)() = NULL;
-
-	if(p == NULL)
-	    _dyld_func_lookup("__dyld_shared_cache_some_image_overridden", (void**)&p);
-	return p();
-}
-
-
-bool dyld_process_is_restricted()
-{
-	DYLD_NO_LOCK_THIS_BLOCK;
-    static bool (*p)() = NULL;
-	
-	if(p == NULL)
-	    _dyld_func_lookup("__dyld_process_is_restricted", (void**)&p);
-	return p();
-}
-
-#if DYLD_SHARED_CACHE_SUPPORT
-const char* dyld_shared_cache_file_path()
-{
-	DYLD_NO_LOCK_THIS_BLOCK;
-    static const char* (*p)() = NULL;
-	
-	if(p == NULL)
-	    _dyld_func_lookup("__dyld_shared_cache_file_path", (void**)&p);
-	return p();
-}
-#endif
-
-void dyld_dynamic_interpose(const struct mach_header* mh, const struct dyld_interpose_tuple array[], size_t count)
-{
-	DYLD_LOCK_THIS_BLOCK;
-    static void (*p)(const struct mach_header* mh, const struct dyld_interpose_tuple array[], size_t count) = NULL;
-
-	if (p == NULL)
-	    _dyld_func_lookup("__dyld_dynamic_interpose", (void**)&p);
-	p(mh, array, count);
-}
-
-
-// SPI called __fork
-void _dyld_fork_child()
-{
-	DYLD_NO_LOCK_THIS_BLOCK;
-    static void (*p)() = NULL;
-
-	if(p == NULL)
-	    _dyld_func_lookup("__dyld_fork_child", (void**)&p);
-	return p();
-}
 
 
 

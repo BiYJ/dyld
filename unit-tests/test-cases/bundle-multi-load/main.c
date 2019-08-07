@@ -22,7 +22,6 @@
  */
 #include <stdio.h>
 #include <mach-o/dyld.h>
-#include <Availability.h>
 
 #include "test.h" // PASS(), FAIL()
 
@@ -33,8 +32,6 @@
 
 int main()
 {
-// NSCreateObjectFileImageFromMemory is only available on Mac OS X - not iPhone OS
-#if __MAC_OS_X_VERSION_MIN_REQUIRED
 	NSObjectFileImage ofi;
 	if ( NSCreateObjectFileImageFromFile("test.bundle", &ofi) != NSObjectFileImageSuccess ) {
 		FAIL("NSCreateObjectFileImageFromFile failed");
@@ -150,7 +147,7 @@ int main()
 		FAIL("3rd NSDestroyObjectFileImage failed");
 		return 0;
 	}
-#endif	
+	
 	PASS("bundle-multi-load");
 	return 0;
 }

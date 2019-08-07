@@ -61,7 +61,7 @@ int main()
 		exit(0);
 	}
 
-	PASS("dlopen-dyld-locking");
+	PASS("dlsym-dyld-locking");
 	return EXIT_SUCCESS;
 }
 

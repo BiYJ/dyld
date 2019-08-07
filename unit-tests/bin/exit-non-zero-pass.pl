@@ -39,6 +39,5 @@ while(<OUT>)
 	print $_;
 }
 close(OUT) || die("$!");
-unlink "/tmp/exit-non-zero.tmp";
 exit 0;
 

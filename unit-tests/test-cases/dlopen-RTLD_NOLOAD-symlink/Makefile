@@ -23,16 +23,13 @@
 TESTROOT = ../..
 include ${TESTROOT}/include/common.makefile
 
-PWD = $(shell pwd)
 
 ###
 ### Test that RTLD_NOLOAD finds existing image 
 ### even when symlinks are used to obscure it
 ###
 
-all-check: all check
-
-check:
+run: all
 	./main libfoosym.dylib
 	./main2 libbar.dylib
 
@@ -46,7 +43,7 @@ libfoosym.dylib : libfoo.dylib
 	ln -sf libfoo.dylib libfoosym.dylib
 
 libfoo.dylib : foo.c
-	${CC} ${CCFLAGS} -dynamiclib foo.c -o ${PWD}/libfoo.dylib 
+	${CC} ${CCFLAGS} -dynamiclib foo.c -o `pwd`/libfoo.dylib 
 
 main2 : main.c libbarsym.dylib
 	${CC} ${CCFLAGS} -I${TESTROOT}/include main.c libbarsym.dylib -o main2 
@@ -55,7 +52,7 @@ libbarsym.dylib : libbar.dylib
 	ln -sf libbar.dylib libbarsym.dylib
 
 libbar.dylib : bar.c
-	${CC} ${CCFLAGS} -dynamiclib bar.c -o libbar.dylib -install_name ${PWD}/libbarsym.dylib 
+	${CC} ${CCFLAGS} -dynamiclib bar.c -o libbar.dylib -install_name `pwd`/libbarsym.dylib 
 
 clean:
 	${RM} ${RMFLAGS} *~ main main2 libfoo.dylib libfoosym.dylib libbar.dylib libbarsym.dylib

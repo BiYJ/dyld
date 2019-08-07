@@ -23,7 +23,6 @@
 TESTROOT = ../..
 include ${TESTROOT}/include/common.makefile
 
-PWD = $(shell pwd)
 
 #
 # The main executable supplies an rpath.  libfoo.dylib supplies an 
@@ -32,9 +31,8 @@ PWD = $(shell pwd)
 # rpath. 
 #
 
-all-check: all check
 
-check:
+run: all
 	./main
 
 all: main
@@ -48,10 +46,10 @@ hide2/libbaz.dylib : baz.c
 	${CC} baz.c -dynamiclib -o hide2/libbaz.dylib  -install_name @rpath/libbaz.dylib
 
 libfoo.dylib : foo.c hide1/libbar.dylib hide2/libbaz.dylib
-	${CC} foo.c -dynamiclib -o libfoo.dylib hide1/libbar.dylib hide2/libbaz.dylib -Wl,-rpath -Wl,${PWD}/hide2
+	${CC} foo.c -dynamiclib -o libfoo.dylib hide1/libbar.dylib hide2/libbaz.dylib -Wl,-rpath -Wl,`pwd`/hide2
 
 main : main.c libfoo.dylib
-	${CC} -I${TESTROOT}/include main.c -o main libfoo.dylib -Wl,-rpath -Wl,${PWD}/hide1
+	${CC} -I${TESTROOT}/include main.c -o main libfoo.dylib -Wl,-rpath -Wl,`pwd`/hide1
 
 clean:
 	${RM} ${RMFLAGS} *~  main hide1 hide2 libfoo.dylib

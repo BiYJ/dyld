@@ -23,15 +23,13 @@
 TESTROOT = ../..
 include ${TESTROOT}/include/common.makefile
 
-PWD = $(shell pwd)
 
 #
 # a main executable linked with -rpath used to locate a dylib it links against
 #
 
-all-check: all check
 
-check:
+run: all
 	./main
 
 all: main
@@ -45,7 +43,7 @@ hide/hole/libfoo.dylib : foo.c hide/hole/libbar.dylib
 	${CC} foo.c hide/hole/libbar.dylib -dynamiclib -o hide/hole/libfoo.dylib -install_name @rpath/libfoo.dylib 
 
 main : main.c hide/hole/libfoo.dylib
-	${CC} -I${TESTROOT}/include main.c -o main hide/hole/libfoo.dylib -Wl,-rpath -Wl,${PWD}/hide/hole
+	${CC} -I${TESTROOT}/include main.c -o main hide/hole/libfoo.dylib -Wl,-rpath -Wl,`pwd`/hide/hole
 
 clean:
 	${RM} -rf *~  main hide

@@ -30,9 +30,7 @@ include ${TESTROOT}/include/common.makefile
 #
 
 
-all-check: all check
-
-check:
+run: all
 	export DYLD_FALLBACK_LIBRARY_PATH=`pwd`/bad && ./main
 	export DYLD_FALLBACK_LIBRARY_PATH=`pwd`/good && ./main2
 

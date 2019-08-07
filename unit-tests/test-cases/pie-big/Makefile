@@ -25,9 +25,8 @@ include ${TESTROOT}/include/common.makefile
 
 # run a PIE four times and verify its load address was different every time
 
-all-check: all check
 
-check:
+run: main
 	./main > main.out
 	./main >> main.out
 	./main >> main.out
@@ -39,10 +38,9 @@ check:
 		echo "XFAIL pie-basic"; \
 	fi; \
 	 
-all: main
 
 main : main.c
-	${CC} ${CCFLAGS} -I${TESTROOT}/include -Wl,-pie -o main main.c
+	${CC} ${CCFLAGS} -I${TESTROOT}/include -Wl,-pie -o main main.c -mmacosx-version-min=10.5
 
 
 clean:

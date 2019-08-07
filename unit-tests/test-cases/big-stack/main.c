@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006-2012 Apple Inc. All rights reserved.
+ * Copyright (c) 2006 Apple Computer, Inc. All rights reserved.
  *
  * @APPLE_LICENSE_HEADER_START@
  * 
@@ -31,7 +31,6 @@
 // This builds an executable that needs > 2GB of stack
 //
 
-
 char* keepAlive;	// to keep compiler from optimizing away stack variable
 
 // keep recursing until desired stack size achieved
@@ -39,21 +38,38 @@ void foo(unsigned long long stackSize, char* stackStart)
 {
 	char buffer[32*1024*1024];
 	keepAlive = buffer;
-	// only recursive if there is enough room for next buffer
-	intptr_t freeStackSpace = (buffer - sizeof(buffer)) - (stackStart - stackSize);
-	//fprintf(stderr, "&buffer=%p, stackStart=%p, freeStackSpace=0x%lx\n", buffer, stackStart, freeStackSpace); 
-	if ( freeStackSpace < sizeof(buffer) )
+	if ( (stackStart - buffer) > stackSize )
 		return;
 	else
 		foo(stackSize, stackStart);
 }
 
+#if __ppc__
+static bool isRosetta()
+{
+	int mib[] = { CTL_KERN, KERN_CLASSIC, getpid() };
+	int is_classic = 0;
+	size_t len = sizeof(int);
+	int ret = sysctl(mib, 3, &is_classic, &len, NULL, 0);
+	if ((ret != -1) && is_classic) {
+		// we're running under Rosetta 
+		return true;
+	}
+	return false;
+}
+#endif
 
 int
 main()
 {
 	char start;
-  foo(STACK_SIZE, &start);	
+#if __ppc__
+	// programs running under rosetta cannot use large amounts of stack
+	if ( isRosetta() )
+		foo(0x02000000, &start);	
+	else
+#endif	
+		foo(0x81000000, &start);	// 2.1 GB stack
 	return EXIT_SUCCESS;
 }
 

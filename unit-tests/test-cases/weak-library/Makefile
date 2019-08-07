@@ -1,5 +1,5 @@
 ##
-# Copyright (c) 2005-2008 Apple Inc. All rights reserved.
+# Copyright (c) 2005 Apple Computer, Inc. All rights reserved.
 #
 # @APPLE_LICENSE_HEADER_START@
 # 
@@ -23,18 +23,16 @@
 TESTROOT = ../..
 include ${TESTROOT}/include/common.makefile
 
-all-check: all check
-
-check:
-	cd absent/  && ../${TESTROOT}/bin/exit-zero-pass.pl "weak-library" "weak-library" ./main
-	cd present/ && ../${TESTROOT}/bin/exit-zero-pass.pl "weak-library" "weak-library" ./main
+run: all
+	cd absent/  && ../${TESTROOT}/bin/exit-zero-pass.pl "pass message" "fail message" ./main
+	cd present/ && ../${TESTROOT}/bin/exit-zero-pass.pl "pass message" "fail message" ./main
 
 all: foo.c main.c
 	${CC} -dynamiclib -prebind -seg1addr 400000 -o libfoo.dylib foo.c
 	mkdir -p absent/
-	${CC} -prebind -I${TESTROOT}/include -L. -Wl,-weak-lfoo -o absent/main main.c
+	export MACOSX_DEPLOYMENT_TARGET=10.2 && ${CC} -prebind -I${TESTROOT}/include -L. -Wl,-weak-lfoo -o absent/main main.c
 	mkdir -p present/
-	${CC} -prebind -I${TESTROOT}/include -L. -Wl,-weak-lfoo -o present/main main.c
+	export MACOSX_DEPLOYMENT_TARGET=10.2 && ${CC} -prebind -I${TESTROOT}/include -L. -Wl,-weak-lfoo -o present/main main.c
 	mv libfoo.dylib present/
 
 clean:

@@ -23,9 +23,7 @@
 TESTROOT = ../..
 include ${TESTROOT}/include/common.makefile
 
-all-check: all check
-
-check:
+run: all
 	./main || echo "FAIL dlopen-in-initializer" 
 
 all: main test.bundle test.dylib

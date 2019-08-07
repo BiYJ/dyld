@@ -1,5 +1,5 @@
 ##
-# Copyright (c) 2007-2009 Apple Inc. All rights reserved.
+# Copyright (c) 2007 Apple Inc. All rights reserved.
 #
 # @APPLE_LICENSE_HEADER_START@
 # 
@@ -28,19 +28,21 @@ include ${TESTROOT}/include/common.makefile
 # have the entry point called before initializers are run
 #
 
-all-check: all check
+run: all
+	./main-10.4
+	./main-10.5
 
-check:
-	./main
 
+all: main-10.4 main-10.5
 
-all: main
+main-10.4: main.c
+	${CC} ${CCFLAGS} -I${TESTROOT}/include -o main-10.4 mystart.s main.c -mmacosx-version-min=10.4 -e _mystart
 
-main: main.c
-	${CC} ${CCFLAGS} -I${TESTROOT}/include -o main mystart.s main.c -e _mystart -Wl,-no_new_main
+main-10.5: main.c
+	${CC} ${CCFLAGS} -I${TESTROOT}/include -o main-10.5 mystart.s main.c -mmacosx-version-min=10.5 -e _mystart
 
 
 clean:
-	${RM} ${RMFLAGS} *~  main
+	${RM} ${RMFLAGS} *~ main-10.4 main-10.5
  
 

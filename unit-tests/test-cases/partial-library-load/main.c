@@ -29,8 +29,6 @@
 
 int main()
 {
-// NSCreateObjectFileImageFromMemory is only available on Mac OS X - not iPhone OS
-#if __MAC_OS_X_VERSION_MIN_REQUIRED
 	// load bundle which indirectly loads libfoo and libbar
 	NSObjectFileImage ofi;
 	if ( NSCreateObjectFileImageFromFile("test.bundle", &ofi) != NSObjectFileImageSuccess ) {
@@ -50,7 +48,7 @@ int main()
 	if ( mh != NULL ) {
 		return 1;
 	}
-#endif
+	
 #if 0	
 	// find foo
 	NSSymbol sym = NSLookupSymbolInImage(mh, "_foo", NSLOOKUPSYMBOLINIMAGE_OPTION_BIND);

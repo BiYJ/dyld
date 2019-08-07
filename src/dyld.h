@@ -1,6 +1,6 @@
 /* -*- mode: C++; c-basic-offset: 4; tab-width: 4 -*-
  *
- * Copyright (c) 2004-2009 Apple Inc. All rights reserved.
+ * Copyright (c) 2004-2006 Apple Computer, Inc. All rights reserved.
  *
  * @APPLE_LICENSE_HEADER_START@
  * 
@@ -23,7 +23,6 @@
  */
 
 #include <stdint.h>
-#include <sys/stat.h>
 
 #include "ImageLoader.h"
 #include "mach-o/dyld_priv.h"
@@ -39,14 +38,13 @@ namespace dyld {
 	struct LoadContext
 	{
 		bool			useSearchPaths;
-		bool			useFallbackPaths;
 		bool			useLdLibraryPath;
 		bool			implicitRPath;
 		bool			matchByInstallName;
 		bool			dontLoad;
 		bool			mustBeBundle;
 		bool			mustBeDylib;
-		bool			canBePIE;
+		bool			findDLL;
 		const char*						origin;			// path for expanding @loader_path
 		const ImageLoader::RPathChain*	rpath;			// paths for expanding @rpath
 	};
@@ -54,35 +52,36 @@ namespace dyld {
 
 
 	typedef void		 (*ImageCallback)(const struct mach_header* mh, intptr_t slide);
+	typedef void		 (*BundleNotificationCallBack)(const char* imageName, ImageLoader* image);
+	typedef ImageLoader* (*BundleLocatorCallBack)(const char* symbolName);
 	typedef void		 (*UndefinedHandler)(const char* symbolName);
 	typedef const char*	 (*ImageLocator)(const char* dllName);
 
 
 	extern ImageLoader::LinkContext			gLinkContext;
-	extern struct dyld_all_image_infos*		gProcessInfo;
 	extern bool								gLogAPIs;
-#if DYLD_SHARED_CACHE_SUPPORT
-	extern bool								gSharedCacheOverridden;
-#endif
+	extern bool								gSharedCacheNotFound;
+	extern bool								gSharedCacheNeedsUpdating;
+	extern bool								gSharedCacheDontNotify;
 	extern const struct LibSystemHelpers*	gLibSystemHelpers;
 #if SUPPORT_OLD_CRT_INITIALIZATION
 	extern bool								gRunInitializersOldWay;
 #endif
 	extern void					registerAddCallback(ImageCallback func);
 	extern void					registerRemoveCallback(ImageCallback func);
+	extern void					registerZeroLinkHandlers(BundleNotificationCallBack, BundleLocatorCallBack);
 	extern void					registerUndefinedHandler(UndefinedHandler);
 	extern void					initializeMainExecutable();
 	extern void					preflight(ImageLoader* image, const ImageLoader::RPathChain& loaderRPaths);
-	extern void					link(ImageLoader* image, bool forceLazysBound, bool neverUnload, const ImageLoader::RPathChain& loaderRPaths);
+	extern void					link(ImageLoader* image, bool forceLazysBound, const ImageLoader::RPathChain& loaderRPaths);
 	extern void					runInitializers(ImageLoader* image);
-	extern void					runImageStaticTerminators(ImageLoader* image);	
+	extern void					runTerminators(void*);
 	extern const char*			getExecutablePath();
 	extern bool					validImage(const ImageLoader*);
 	extern ImageLoader*			getIndexedImage(uint32_t index);
 	extern uint32_t				getImageCount();
 	extern ImageLoader*			findImageByMachHeader(const struct mach_header* target);
 	extern ImageLoader*			findImageContainingAddress(const void* addr);
-	extern ImageLoader*			findImageContainingSymbol(const void* symbol);
 	extern ImageLoader*			findImageByName(const char* path);
 	extern ImageLoader*			findLoadedImageByInstallPath(const char* path);
 	extern bool					flatFindExportedSymbol(const char* name, const ImageLoader::Symbol** sym, const ImageLoader** image);
@@ -92,30 +91,20 @@ namespace dyld {
 	extern void					removeImage(ImageLoader* image);
 	extern ImageLoader*			cloneImage(ImageLoader* image);
 	extern void					forEachImageDo( void (*)(ImageLoader*, void*), void*);
-	extern uintptr_t			_main(const macho_header* mainExecutableMH, uintptr_t mainExecutableSlide, int argc, const char* argv[], const char* envp[],
-									  const char* apple[], uintptr_t* startGlue) __attribute__((noinline));  // <rdar://problem/113
+	extern uintptr_t			_main(const struct mach_header* mainExecutableMH, uintptr_t mainExecutableSlide, int argc, const char* argv[], const char* envp[], const char* apple[]);
 	extern void					halt(const char* message)  __attribute__((noreturn));
 	extern void					setErrorMessage(const char* msg);
 	extern const char*			getErrorMessage();
 	extern void					clearErrorMessage();
 	extern bool					mainExecutablePrebound();
 	extern ImageLoader*			mainExecutable();
-	extern void					processDyldEnvironmentVariable(const char* key, const char* value, const char* mainDir);
+	extern void					processDyldEnvironmentVarible(const char* key, const char* value);
 	extern void					registerImageStateSingleChangeHandler(dyld_image_states state, dyld_image_state_change_handler handler);
 	extern void					registerImageStateBatchChangeHandler(dyld_image_states state, dyld_image_state_change_handler handler);
 	extern void					garbageCollectImages();
+	extern void					registerWinImageLocator(ImageLocator);
 	extern int					openSharedCacheFile();
 	extern const void*			imMemorySharedCacheHeader();
-	extern uintptr_t			fastBindLazySymbol(ImageLoader** imageLoaderCache, uintptr_t lazyBindingInfoOffset);
-#if DYLD_SHARED_CACHE_SUPPORT
-	extern bool					inSharedCache(const char* path);
-#endif
-#if LOG_BINDINGS
-	extern void					logBindings(const char* format, ...);
-#endif
-	extern bool					processIsRestricted();
-	extern const char*			getStandardSharedCacheFilePath();
-	extern int					my_stat(const char* path, struct stat* buf);
-	extern int					my_open(const char* path, int flag, int other);
-}
+
+};
 

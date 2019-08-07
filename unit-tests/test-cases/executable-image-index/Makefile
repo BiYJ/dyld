@@ -23,9 +23,7 @@
 TESTROOT = ../..
 include ${TESTROOT}/include/common.makefile
 
-all-check: all check
-
-check:
+run: all
 	#export DYLD_INSERT_LIBRARIES=libfoo.dylib && ./main
 	./main
 

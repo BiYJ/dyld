@@ -54,12 +54,12 @@
 
     .text
     .align 4,0x90
-	.globl _stub_binding_helper_i386_old
-_stub_binding_helper_i386_old:
+	.globl _fast_stub_binding_helper_interface
+_fast_stub_binding_helper_interface:
 	pushl		$0
-    .globl _stub_binding_helper
+    .globl _stub_binding_helper_interface
     .globl _misaligned_stack_error
-_stub_binding_helper:
+_stub_binding_helper_interface:
 	subl		$STACK_SIZE,%esp	    # makes stack 16-byte aligned
 	movl		%eax,EAX_SAVE(%esp)	
 	movl		LP_OLD_BP_SAVE(%esp),%eax   # get lazy-pointer meta-parameter
@@ -133,8 +133,8 @@ _stub_binding_helper_interface2:
     
     .text
     .align 2,0x90
-    .globl _stub_binding_helper
-_stub_binding_helper:
+    .globl _stub_binding_helper_interface
+_stub_binding_helper_interface:
 	pushq		%rbp
 	movq		%rsp,%rbp
 	subq		$STACK_SIZE,%rsp	# at this point stack is 16-byte aligned because two meta-parameters where pushed
@@ -180,40 +180,71 @@ _stub_binding_helper:
 #endif
 
 
-#if __arm__ && !__ARM_ARCH_7K__
+#if __ppc__ || __ppc64__
+#include <architecture/ppc/mode_independent_asm.h>
 /*
- * This is the interface for the old stub_binding_helper for ARM:
- * The caller has pushed the address of the a lazy pointer to be filled in with
- * the value for the defined symbol and pushed the address of the the mach
- * header this pointer comes from.
+ * This is the interface for the stub_binding_helper for the ppc:
+ * The caller has placed in r11 the address of the a lazy pointer to be filled
+ * in with the value for the defined symbol and placed in r12 the address of
+ * the the mach header this pointer comes from.
  *
- * sp+4        address of lazy pointer
- * sp+0        address of mach header
- * 
- * After the symbol has been resolved and the pointer filled in this is to pop
- * these arguments off the stack and jump to the address of the defined symbol.
+ * r11 address of lazy pointer
+ * r12 address of mach header
  */
+#define LRSAVE		MODE_CHOICE(8,16)
+#define STACK_SIZE	MODE_CHOICE(144,288)
+#define R3SAVE          MODE_CHOICE(56,112)
+#define R4SAVE          MODE_CHOICE(60,120)
+#define R5SAVE          MODE_CHOICE(64,128)
+#define R6SAVE          MODE_CHOICE(68,136)
+#define R7SAVE          MODE_CHOICE(72,144)
+#define R8SAVE          MODE_CHOICE(76,152)
+#define R9SAVE          MODE_CHOICE(80,160)
+#define R10SAVE         MODE_CHOICE(84,168)
+
   
 	.text
 	.align 2
-	.globl	_stub_binding_helper
-_stub_binding_helper:
-	stmfd	sp!, {r0,r1,r2,r3,r7,lr}	// save registers
-	add	r7, sp, #16			// point FP to previous FP
+	.globl _stub_binding_helper_interface
+_stub_binding_helper_interface:
+	mflr	r0		    ; get link register value
+	stg	r0,LRSAVE(r1)	    ; save link register value in the linkage area
+	stgu	r1,-STACK_SIZE(r1)  ; save stack pointer and update it
 
-	ldr	r0, [sp, #24]			// move address of mach header to 1st parameter
-	ldr	r1, [sp, #28]			// move address of lazy pointer to 2nd parameter
+	stg	r3,R3SAVE(r1)	; save all registers that could contain
+	stg	r4,R4SAVE(r1)	;  parameters to the routine that is being
+	stg	r5,R5SAVE(r1)	;  bound.
+	stg	r6,R6SAVE(r1)
+	stg	r7,R7SAVE(r1)
+	stg	r8,R8SAVE(r1)
+	stg	r9,R9SAVE(r1)
+	stg	r10,R10SAVE(r1)
 
-	// call dyld::bindLazySymbol(mh, lazy_symbol_pointer_address)
+	mr	r3,r12		; move address of mach header to 1st parameter
+	mr	r4,r11		; move address of lazy pointer to 2nd parameter
+	; call dyld::bindLazySymbol(mh, lazy_symbol_pointer_address)
 	bl	__ZN4dyld14bindLazySymbolEPK11mach_headerPm
-	mov	ip, r0				// move the symbol`s address into ip
+	mr	r12,r3		; move the symbol`s address into r12
+	mtctr	r12		; move the symbol`s address into count register
 
-	ldmfd	sp!, {r0,r1,r2,r3,r7,lr}	// restore registers
-	add	sp, sp, #8			// remove meta-parameters
+	lg	r0,STACK_SIZE+LRSAVE(r1)	; get old link register value
 
-	bx	ip				// jump to the symbol`s address that was bound
+	lg	r3,R3SAVE(r1)	; restore all registers that could contain
+	lg	r4,R4SAVE(r1)	;  parameters to the routine that was bound.
+	lg	r5,R5SAVE(r1)
+	lg	r6,R6SAVE(r1)
+	lg	r7,R7SAVE(r1)
+	lg	r8,R8SAVE(r1)
+	lg	r9,R9SAVE(r1)
+	lg	r10,R10SAVE(r1)
 
-#endif /* __arm__ */
+	addi	r1,r1,STACK_SIZE; restore old stack pointer
+	mtlr	r0		; restore link register
+
+	bctr			; jump to the symbol`s address that was bound
+
+#endif /* __ppc__ */
+
 
 
 

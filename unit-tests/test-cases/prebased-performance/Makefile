@@ -35,18 +35,16 @@ endif
 
 
 
-all-check: all check
-
-check:
+run: all
 	./main
 
 all: main 
 
 main: main.c libfoo.dylib
-	${CC} ${CCFLAGS} -I${TESTROOT}/include -o main main.c libfoo.dylib -Wl,-no_pie
+	${CC} ${CCFLAGS} -I${TESTROOT}/include -o main main.c libfoo.dylib
 
 libfoo.dylib: foo.c
-	${CC} ${CCFLAGS} -dynamiclib -o libfoo.dylib foo.c -seg1addr ${DYLIB_BASES_ADDRESS}
+	${CC} ${CCFLAGS} -dynamiclib -o libfoo.dylib foo.c -seg1addr ${DYLIB_BASES_ADDRESS} -mmacosx-version-min=10.5
 
 
 clean:

@@ -1,5 +1,5 @@
 ##
-# Copyright (c) 2007-2009 Apple Inc. All rights reserved.
+# Copyright (c) 2007 Apple Inc. All rights reserved.
 #
 # @APPLE_LICENSE_HEADER_START@
 # 
@@ -27,30 +27,40 @@ PWD = `pwd`
 
 
 #
-# Test that the ways to re-export a sub framework work
+# Test that the 10.4 and 10.5 ways to re-export a sub framework work
 #
 
-all-check: all check
+run : all
+	./main4
+	./main5
 
-check:
-	./main
+all : main4 main5
 
-all:  main
+Bar4.framework/Bar4 : bar.c
+	mkdir -p Bar4.framework
+	gcc bar.c -dynamiclib -o $(PWD)/Bar4.framework/Bar4 -umbrella Foo4 -mmacosx-version-min=10.4
+
+Foo4.framework/Foo4 : foo.c Bar4.framework/Bar4
+	mkdir -p Foo4.framework
+	gcc foo.c -dynamiclib Bar4.framework/Bar4 -o $(PWD)/Foo4.framework/Foo4 -mmacosx-version-min=10.4
+
+main4 : main.c Foo4.framework/Foo4
+	gcc main.c -I${TESTROOT}/include -o main4 -framework Foo4 -F. -mmacosx-version-min=10.4
 
 
-Bar.framework/Bar : bar.c
-	mkdir -p Bar.framework
-	${CC} bar.c -dynamiclib -install_name $(PWD)/Bar.framework/Bar  -o Bar.framework/Bar -umbrella Foo 
+Bar5.framework/Bar5 : bar.c
+	mkdir -p Bar5.framework
+	gcc bar.c -dynamiclib -o $(PWD)/Bar5.framework/Bar5 -umbrella Foo5 -mmacosx-version-min=10.5
 
-Foo.framework/Foo : foo.c Bar.framework/Bar
-	mkdir -p Foo.framework
-	${CC} foo.c -dynamiclib Bar.framework/Bar -install_name $(PWD)/Foo.framework/Foo -o Foo.framework/Foo 
+Foo5.framework/Foo5 : foo.c Bar5.framework/Bar5
+	mkdir -p Foo5.framework
+	gcc foo.c -dynamiclib Bar5.framework/Bar5 -o $(PWD)/Foo5.framework/Foo5 -mmacosx-version-min=10.5
 
-main : main.c Foo.framework/Foo
-	${CC} main.c -I${TESTROOT}/include -o main -framework Foo -F. 
+main5 : main.c Foo5.framework/Foo5
+	gcc main.c -I${TESTROOT}/include -o main5 -framework Foo5 -F. -mmacosx-version-min=10.5
 
 
 	
 clean:
-	rm -rf  main Foo.framework Bar.framework 
+	rm -rf main4 Foo4.framework Bar4.framework main5 Foo5.framework Bar5.framework 
 	

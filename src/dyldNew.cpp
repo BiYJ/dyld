@@ -1,6 +1,6 @@
 /* -*- mode: C++; c-basic-offset: 4; tab-width: 4 -*-
  *
- * Copyright (c) 2004-2008 Apple Inc. All rights reserved.
+ * Copyright (c) 2004-2007 Apple Inc. All rights reserved.
  *
  * @APPLE_LICENSE_HEADER_START@
  * 
@@ -26,8 +26,6 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
-#include <mach/mach.h>
-#include <sys/mman.h>
 
 extern "C" void* __dso_handle;
 
@@ -41,24 +39,13 @@ extern "C" void* __dso_handle;
 
 #if __LP64__
 	// room for about ~1000 initial dylibs
-	#define DYLD_POOL_CHUNK_SIZE 200*1024
+	#define DYLD_INITIAL_POOL_SIZE 400*1024
 #else
 	// room for about ~900 initial dylibs
-	#define DYLD_POOL_CHUNK_SIZE 150*1024
+	#define DYLD_INITIAL_POOL_SIZE 200*1024
 #endif
-
-struct dyld_static_pool {
-	dyld_static_pool*	previousPool;
-	uint8_t*			current;
-	uint8_t*			end;
-	uint8_t				pool[1]; 
-};
-
-// allocate initial pool independently of pool header to take less space on disk
-static uint8_t initialPoolContent[DYLD_POOL_CHUNK_SIZE] __attribute__((__aligned__(16)));
-static dyld_static_pool initialPool = { NULL, initialPoolContent, &initialPoolContent[DYLD_POOL_CHUNK_SIZE] };
-static dyld_static_pool* currentPool = &initialPool;
-
+static uint8_t dyldPool[DYLD_INITIAL_POOL_SIZE];
+static uint8_t* curPoolPtr = dyldPool;
 
 void* malloc(size_t size)
 {
@@ -68,34 +55,14 @@ void* malloc(size_t size)
 		return p;
 	}
 	else {
-		if ( size > DYLD_POOL_CHUNK_SIZE ) {
-			dyld::log("dyld malloc overflow: size=%zu\n", size);
-			exit(1);
-		}
 		size = (size+sizeof(void*)-1) & (-sizeof(void*)); // pointer align
-		uint8_t* result = currentPool->current;
-		currentPool->current += size;
-		if ( currentPool->current > currentPool->end ) {
-			vm_address_t addr = 0;
-			kern_return_t r = vm_allocate(mach_task_self(), &addr, DYLD_POOL_CHUNK_SIZE, VM_FLAGS_ANYWHERE);
-			if ( r != KERN_SUCCESS ) {
-				dyld::log("out of address space for dyld memory pool\n");
-				exit(1);
-			}
-			dyld_static_pool* newPool = (dyld_static_pool*)addr;
-			newPool->previousPool = NULL;
-			newPool->current = newPool->pool;
-			newPool->end = (uint8_t*)(addr + DYLD_POOL_CHUNK_SIZE);
-			newPool->previousPool = currentPool;
-			currentPool = newPool;
-			if ( (currentPool->current + size) > currentPool->end ) {
-				dyld::log("dyld memory pool exhausted: size=%lu\n", size);
-				exit(1);
-			}
-			result = currentPool->current;
-			currentPool->current += size;
+		uint8_t* result = curPoolPtr;
+		if ( (curPoolPtr + size) > &dyldPool[DYLD_INITIAL_POOL_SIZE] ) {
+			dyld::log("initial dyld memory pool exhausted\n");
+			_exit(1);
 		}
-		//dyld::log("%p = malloc(%3lu) from pool %p, free space = %lu\n", result, size, currentPool, (long)(currentPool->end - currentPool->current));
+		curPoolPtr += size;
+		//dyld::log("%p = malloc(%lu) from pool, total = %d\n", result, size, curPoolPtr-dyldPool);
 		return result;
 	}
 }
@@ -104,22 +71,13 @@ void* malloc(size_t size)
 void free(void* ptr)
 {
 	// ignore any pointer within dyld (i.e. stuff from pool or static strings)
-	if ( (dyld::gLibSystemHelpers != NULL) && ((ptr < &__dso_handle) || (ptr >= &initialPoolContent[DYLD_POOL_CHUNK_SIZE])) ) {
-		// ignore stuff in any dynamically alloated dyld pools
-		for (dyld_static_pool* p = currentPool; p != NULL; p = p->previousPool) {
-			if ( (p->pool <= ptr) && (ptr < p->end) ) {
-				// do nothing, pool entries can't be reclaimed
-				//dyld::log("free(%p) from dynamic pool\n", ptr);
-				return;
-			}
-		}
-		
+	if ( (dyld::gLibSystemHelpers != NULL) && ((ptr < &__dso_handle) || (ptr >= &dyldPool[DYLD_INITIAL_POOL_SIZE])) ) {
 		//dyld::log("free(%p) from libSystem\n", ptr);
 		return dyld::gLibSystemHelpers->free(ptr);
 	}
 	else {
 		// do nothing, pool entries can't be reclaimed
-		//dyld::log("free(%p) from static pool\n", ptr);
+		//dyld::log("free(%p) from pool\n", ptr);
 	}
 }
 
@@ -127,18 +85,12 @@ void free(void* ptr)
 void* calloc(size_t count, size_t size)
 {
 	if ( dyld::gLibSystemHelpers != NULL ) {
-		void* result = dyld::gLibSystemHelpers->malloc(size*count);
-		bzero(result, size*count);
+		void* result = dyld::gLibSystemHelpers->malloc(size);
+		bzero(result, size);
 		return result;
 	}
 	else {
-		// Check for overflow of integer multiplication
-		size_t total = count * size;
-		if ( total/count != size ) {
-			dyld::log("dyld calloc overflow: count=%zu, size=%zu\n", count, size);
-			exit(1);
-		}
-		return malloc(total);
+		return malloc(count*size);
 	}
 }
 
@@ -156,28 +108,5 @@ void* realloc(void *ptr, size_t size)
 // needed __libc_init()
 extern "C" int _malloc_lock;
 int _malloc_lock = 0;
-
-
-// <rdar://problem/12857033> dyld calls this which uses libSystem.dylib's vm_allocate if available
-int vm_alloc(vm_address_t* addr, vm_size_t size, uint32_t flags)
-{
-	if ( (dyld::gLibSystemHelpers != NULL) && (dyld::gLibSystemHelpers->version >= 12) ) {
-		return dyld::gLibSystemHelpers->vm_alloc(mach_task_self(), addr, size, flags);
-	}
-	else {
-		return ::vm_allocate(mach_task_self(), addr, size, flags);
-	}
-}
-
-void* xmmap(void* addr, size_t len, int prot, int flags, int fd, off_t offset)
-{
-	if ( (dyld::gLibSystemHelpers != NULL) && (dyld::gLibSystemHelpers->version >= 12) ) {
-		return dyld::gLibSystemHelpers->mmap(addr, len, prot, flags, fd, offset);
-	}
-	else {
-		return ::mmap(addr, len, prot, flags, fd, offset);
-	}
-}
-
 
 

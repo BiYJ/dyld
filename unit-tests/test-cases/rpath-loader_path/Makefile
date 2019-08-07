@@ -30,9 +30,8 @@ include ${TESTROOT}/include/common.makefile
 # of the binary.
 #
 
-all-check: all check
 
-check:
+run: all
 	./main
 
 all: main

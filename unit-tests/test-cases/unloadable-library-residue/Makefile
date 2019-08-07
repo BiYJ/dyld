@@ -31,9 +31,8 @@ include ${TESTROOT}/include/common.makefile
 ### so the next use of libfoo seemed to succeed, when it should have failed.
 ###
 
-all-check: all check
 
-check:
+run: all
 	export DYLD_IMAGE_SUFFIX="_missing" && ./main
 
 all: main libfoo.dylib

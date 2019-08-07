@@ -28,9 +28,8 @@ include ${TESTROOT}/include/common.makefile
 # a main executable run with LD_LIBRARY_PATH can locate a dylib it links against
 #
 
-all-check: all check
 
-check:
+run: all
 	export LD_LIBRARY_PATH=`pwd`/hide/hole && ./main
 
 all: main

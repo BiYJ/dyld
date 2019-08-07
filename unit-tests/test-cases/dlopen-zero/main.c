@@ -49,7 +49,6 @@ int main()
 		FAIL("dlsym(handle, \"foo\") failed");
 		exit(1);
 	}
-	
 	if ( sym != &foo ) {
 		FAIL("dlsym(handle, \"foo\") returned wrong address");
 		exit(1);

@@ -37,7 +37,7 @@ int main(int argc, const char* argv[])
 }
 
 // inserted library has another copy of foo() that should
-// override this one and return 42
+// overridde this one and return 42
 int foo()
 {
 	return 0;

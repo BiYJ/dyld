@@ -23,13 +23,11 @@
 #include <stdio.h>  // fprintf(), NULL
 #include <stdlib.h> // exit(), EXIT_SUCCESS
 #include <unistd.h>
-#include <Availability.h>
 #include <mach-o/getsect.h>
 #include <mach/mach.h> 
 #include <mach/mach_vm.h> 
 #include "test.h" // PASS(), FAIL(), XPASS(), XFAIL()
 
-#if __MAC_OS_X_VERSION_MIN_REQUIRED
 
 extern void foo();
 extern int fooData;
@@ -72,11 +70,6 @@ static void* getStubAddr()
 	return getsectdata("__TEXT", "__picsymbolstub1", &size);
 #elif __x86_64__
 	return getsectdata("__TEXT", "__symbol_stub1", &size);
-#elif __arm__
-	void* p = getsectdata("__TEXT", "__symbol_stub4", &size);
-	if ( p != NULL ) 
-		return p;
-	return getsectdata("__TEXT", "__symbolstub1", &size);
 #else
 	#error unknown arch
 #endif
@@ -96,27 +89,12 @@ static void checkStubs(void* addr)
 int main()
 {
 	void* stubAddr = getStubAddr();	
-#if __i386__
-	if ( stubAddr != NULL )
-#endif
-	{
 	checkStubs(stubAddr);
 	fooData = 1;
 	foo();
 	checkStubs(stubAddr);
-	}
 	PASS("read-only-stubs");
 	return EXIT_SUCCESS;
 }
 
-#else
-
-int main()
-{
-	// iOS does not have modifiable stubs
-	PASS("read-only-stubs");
-	return EXIT_SUCCESS;
-}
-
-#endif
 

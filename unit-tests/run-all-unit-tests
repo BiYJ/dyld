@@ -7,34 +7,54 @@ cd `echo "$0" | sed 's/run-all-unit-tests/test-cases/'`
 CRSTATE=`defaults read com.apple.CrashReporter DialogType`
 defaults write com.apple.CrashReporter DialogType basic
 
-SDK=`xcodebuild -version -sdk macosx.internal Path`
+echo ""
+echo " * * * Running all unit tests for 32-bits * * *"
 
-# run test targeting different OS versions
-for OSVERSION in 10.9 10.8 10.7 10.6 10.5 10.4
-do 
+# make clean
+../bin/make-recursive.pl clean > /dev/null
+
+# build default architecture
+../bin/make-recursive.pl | ../bin/result-filter.pl
+
+# if G5, then also run all test cases built for ppc64
+if [ `machine` = "ppc970" ] 
+then
 	echo ""
-	echo " * * * Running all unit tests i386 built for $OSVERSION * * *"
-
+	echo " * * * Running all unit tests for 64-bits * * *"
+	
 	# make clean
 	../bin/make-recursive.pl clean > /dev/null
 
-	# build default architecture
-	../bin/make-recursive.pl ARCH="i386" OS_VERSION=$OSVERSION OS_NAME=MacOSX OSX_SDK_ROOT=${SDK} | ../bin/result-filter.pl
+	# build 64-bit architecture
+	../bin/make-recursive.pl ARCH="ppc64" | ../bin/result-filter.pl
+fi
+
+# if Intel, then also run all test cases under emulation
+if [ "`sysctl -n hw.machine`" = "i386" ] 
+then
+	echo ""
+	echo " * * * Running all unit tests for emulated 32-bits * * *"
+	
+	# make clean
+	../bin/make-recursive.pl clean > /dev/null
+
+	# build ppc architecture
+	../bin/make-recursive.pl ARCH="ppc" | ../bin/result-filter.pl
+
 
 	# if 64-bit capable Intel, then also run all test cases for 64-bits
 	if [ `sysctl -n hw.optional.x86_64` = "1" ] 
 	then
 		echo ""
-		echo " * * * Running all unit tests x86_64 built for $OSVERSION * * *"
+		echo " * * * Running all unit tests for 64-bits * * *"
 		
 		# make clean
 		../bin/make-recursive.pl clean > /dev/null
 
 		# build x86_64 architecture
-		../bin/make-recursive.pl ARCH="x86_64" OS_VERSION=$OSVERSION OS_NAME=MacOSX OSX_SDK_ROOT=${SDK} | ../bin/result-filter.pl
+		../bin/make-recursive.pl ARCH="x86_64" | ../bin/result-filter.pl
 	fi
-
-done
+fi
 
 # restore crash reporter state
 defaults write com.apple.CrashReporter DialogType ${CRSTATE}

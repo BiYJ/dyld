@@ -38,6 +38,5 @@ while(<OUT>)
 	print $_;
 }
 close(OUT) || die("$!");
-unlink "/tmp/exit-zero-pass.tmp";
 exit 0;
 

@@ -26,7 +26,7 @@
 
 char* mystrdup(const char* in)
 {
-	return strdup("hello");
+	return "hello";
 }
 
 DYLD_INTERPOSE(mystrdup, strdup)

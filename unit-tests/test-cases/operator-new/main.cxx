@@ -52,3 +52,6 @@ int main()
 	return EXIT_SUCCESS;
 }
 
+
+// add this so WEAK_DEFINES is set, so dyld searchs this image
+int __attribute__((weak)) junk = 2;

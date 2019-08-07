@@ -31,9 +31,6 @@
 
 #include "test.h" // PASS(), FAIL(), XPASS(), XFAIL()
 
-
-#if __MAC_OS_X_VERSION_MIN_REQUIRED
-
 static bool doneRegistering = false;
 
 //
@@ -95,13 +92,10 @@ static void load(const char* name)
 		}
 	}
 }
-#endif
 
 
 int main(int argc, const char* argv[])
 {
-// NSCreateObjectFileImageFromMemory is only available on Mac OS X - not iPhone OS
-#if __MAC_OS_X_VERSION_MIN_REQUIRED
 	// tell dyld we want to know when images successfully loaded
 	dyld_register_image_state_change_handler(dyld_image_state_initialized, false, singleInitializedHandler);
 	doneRegistering = true;
@@ -131,7 +125,6 @@ int main(int argc, const char* argv[])
 	}
 
 //	dlopen("/usr/lib/libz.1.2.3.dylib", RTLD_LAZY);
-#endif
 	
 	PASS("image-state-deny");
 		

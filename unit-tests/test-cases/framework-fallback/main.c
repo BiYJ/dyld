@@ -37,16 +37,14 @@
 int
 main(int argc, const char* argv[])
 {
-#if __MAC_OS_X_VERSION_MIN_REQUIRED
 	const struct mach_header *image;
 
-	image = NSAddImage("AppKit.framework/AppKit",
+	image = NSAddImage("Carbon.framework/Carbon",
 			NSADDIMAGE_OPTION_RETURN_ON_ERROR | NSADDIMAGE_OPTION_WITH_SEARCHING);
-	if ( image == NULL )
-		FAIL("Could not load AppKit");
+	if ( image != NULL )
+		PASS("Carbon loaded");
 	else
-#endif
-		PASS("AppKit loaded");
+		FAIL("Could not load Carbon");
 
 	return 0;
 }

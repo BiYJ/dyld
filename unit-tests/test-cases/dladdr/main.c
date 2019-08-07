@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2005-2008 Apple Computer, Inc. All rights reserved.
+ * Copyright (c) 2005 Apple Computer, Inc. All rights reserved.
  *
  * @APPLE_LICENSE_HEADER_START@
  * 
@@ -25,7 +25,6 @@
 #include <string.h> 
 #include <dlfcn.h> 
 #include <mach-o/dyld.h> 
-#include <Availability.h> 
 
 #include "test.h" // PASS(), FAIL(), XPASS(), XFAIL()
 
@@ -41,7 +40,7 @@ static int foo()
 	return 3;
 }
 
-__attribute__((visibility("hidden"))) int hide()
+int bar2()
 {
 	return 4;
 }
@@ -67,15 +66,13 @@ static void verifybar()
 		FAIL("dladdr()->dli_saddr is not &bar");
 		exit(0);
 	}
-#if __MAC_OS_X_VERSION_MIN_REQUIRED
 	if ( info.dli_fbase != _dyld_get_image_header_containing_address(&bar) ) {
 		FAIL("dladdr()->dli_fbase is not image that contains &bar");
 		exit(0);
 	}
-#endif
 }
 
-// checks local symbol 
+// checks local symbol (should resolve to previoius global symbol bar)
 static void verifyfoo()
 {
 	Dl_info info;
@@ -83,51 +80,29 @@ static void verifyfoo()
 		FAIL("dladdr(&foo, xx) failed");
 		exit(0);
 	}
-	if ( strcmp(info.dli_sname, "foo") != 0 ) {
-		FAIL("dladdr()->dli_sname is \"%s\" instead of \"foo\"", info.dli_sname);
+	if ( strcmp(info.dli_sname, "bar") != 0 ) {
+		if ( strcmp(info.dli_sname, "_bar") == 0 ) {
+			XFAIL("dladdr()->dli_sname is \"%s\" instead of \"bar\"", info.dli_sname);
+		} 
+		else {
+			FAIL("dladdr()->dli_sname is \"%s\" instead of \"bar\"", info.dli_sname);
+			exit(0);
+		}
+	}
+	if ( info.dli_saddr != &bar) {
+		FAIL("dladdr()->dli_saddr is not &bar");
 		exit(0);
 	}
-	if ( info.dli_saddr != &foo) {
-		FAIL("dladdr()->dli_saddr is not &foo");
+	if ( info.dli_fbase != _dyld_get_image_header_containing_address(&bar) ) {
+		FAIL("dladdr()->dli_fbase is not image that contains &bar");
 		exit(0);
 	}
-#if __MAC_OS_X_VERSION_MIN_REQUIRED
-	if ( info.dli_fbase != _dyld_get_image_header_containing_address(&foo) ) {
-		FAIL("dladdr()->dli_fbase is not image that contains &foo");
-		exit(0);
-	}
-#endif
-}
-
-// checks hidden symbol 
-static void verifyhide()
-{
-	Dl_info info;
-	if ( dladdr(&hide, &info) == 0 ) {
-		FAIL("dladdr(&hide, xx) failed");
-		exit(0);
-	}
-	if ( strcmp(info.dli_sname, "hide") != 0 ) {
-		FAIL("dladdr()->dli_sname is \"%s\" instead of \"hide\"", info.dli_sname);
-		exit(0);
-	}
-	if ( info.dli_saddr != &hide) {
-		FAIL("dladdr()->dli_saddr is not &hide");
-		exit(0);
-	}
-#if __MAC_OS_X_VERSION_MIN_REQUIRED
-	if ( info.dli_fbase != _dyld_get_image_header_containing_address(&hide) ) {
-		FAIL("dladdr()->dli_fbase is not image that contains &hide");
-		exit(0);
-	}
-#endif
 }
 
 
 int main()
 {
 	verifybar();
-	verifyhide();
 	verifyfoo();
 
   

@@ -34,9 +34,7 @@ endif
 
 
 
-all-check: all check
-
-check:
+run: all
 	${TESTROOT}/bin/exit-zero-pass.pl "dlsym-RTLD_NEXT-missing with circular libraries" "dlsym-RTLD_NEXT-missing with circular libraries" ${PROG}
 
 all:  main

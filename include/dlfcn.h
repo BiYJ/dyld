@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2008 Apple Inc. All rights reserved.
+ * Copyright (c) 2004-2006 Apple Computer, Inc. All rights reserved.
  *
  * @APPLE_LICENSE_HEADER_START@
  * 
@@ -38,7 +38,7 @@ extern "C" {
 
 #if !defined(_POSIX_C_SOURCE) || defined(_DARWIN_C_SOURCE)
 #include <stdbool.h>
-#include <Availability.h>
+#include <AvailabilityMacros.h>
 /*
  * Structure filled in by dladdr().
  */
@@ -58,7 +58,7 @@ extern void * dlopen(const char * __path, int __mode);
 extern void * dlsym(void * __handle, const char * __symbol);
 
 #if !defined(_POSIX_C_SOURCE) || defined(_DARWIN_C_SOURCE)
-extern bool dlopen_preflight(const char* __path) __OSX_AVAILABLE_STARTING(__MAC_10_5, __IPHONE_2_0);
+extern bool dlopen_preflight(const char* __path) AVAILABLE_MAC_OS_X_VERSION_10_5_AND_LATER;
 #endif /* not POSIX */
 
 
@@ -75,10 +75,9 @@ extern bool dlopen_preflight(const char* __path) __OSX_AVAILABLE_STARTING(__MAC_
 /*
  * Special handle arguments for dlsym().
  */
-#define	RTLD_NEXT	((void *) -1)	/* Search subsequent objects. */
+#define	RTLD_NEXT		((void *) -1)	/* Search subsequent objects. */
 #define	RTLD_DEFAULT	((void *) -2)	/* Use default search algorithm. */
-#define	RTLD_SELF	((void *) -3)	/* Search this and subsequent objects (Mac OS X 10.5 and later) */
-#define	RTLD_MAIN_ONLY	((void *) -5)	/* Search main executable only (Mac OS X 10.5 and later) */
+#define	RTLD_SELF		((void *) -3)	/* Search this and subsequent objects (Mac OS X 10.5 and later) */
 #endif /* not POSIX */
 
 #ifdef __cplusplus

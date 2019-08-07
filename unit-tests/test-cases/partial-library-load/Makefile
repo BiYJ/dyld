@@ -32,9 +32,7 @@ include ${TESTROOT}/include/common.makefile
 ###
 
 
-all-check: all check
-
-check:
+run: all
 	export DYLD_IMAGE_SUFFIX="_missing" && ${TESTROOT}/bin/exit-zero-pass.pl "partial-library-load" "partial-library-load" ./main
 
 all: main test.bundle

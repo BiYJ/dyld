@@ -1,5 +1,5 @@
 ##
-# Copyright (c) 2007-2009 Apple Inc. All rights reserved.
+# Copyright (c) 2007 Apple Inc. All rights reserved.
 #
 # @APPLE_LICENSE_HEADER_START@
 # 
@@ -28,23 +28,27 @@ include ${TESTROOT}/include/common.makefile
 # the mechanism for 10.4 and 10.5 is different 
 #
 
+run: all
+	./main-10.4
+	./main-10.5
+	./main-10.4.stripped
+	./main-10.5.stripped
 
-all-check: all check
+all: main-10.4 main-10.5 main-10.4.stripped main-10.5.stripped
 
-check:
-	./main
-	./main.stripped
+main-10.4: main.c
+	${CC} ${CCFLAGS} -I${TESTROOT}/include -o main-10.4 main.c -mmacosx-version-min=10.4
 
-all: main  main.stripped
+main-10.4.stripped: main-10.4
+	strip main-10.4 -o main-10.4.stripped
+	
+main-10.5: main.c
+	${CC} ${CCFLAGS} -I${TESTROOT}/include -o main-10.5 main.c -mmacosx-version-min=10.5
 
-
-main: main.c
-	${CC} ${CCFLAGS} -I${TESTROOT}/include $(CRTLIB) -o main main.c
-
-main.stripped: main
-	${STRIP} main -o main.stripped
+main-10.5.stripped: main-10.5
+	strip main-10.5 -o main-10.5.stripped
 
 clean:
-	${RM} ${RMFLAGS} *~ main main.stripped
+	${RM} ${RMFLAGS} *~ main-10.4 main-10.5 main-10.4.stripped main-10.5.stripped
  
 

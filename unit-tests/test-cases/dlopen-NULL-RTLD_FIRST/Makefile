@@ -25,9 +25,7 @@ include ${TESTROOT}/include/common.makefile
 
 PWD = `pwd`
 
-all-check: all check
-
-check:
+run: all
 	./main
 
 all: main 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2007-2009 Apple Inc. All rights reserved.
+ * Copyright (c) 2007 Apple Inc. All rights reserved.
  *
  * @APPLE_LICENSE_HEADER_START@
  * 
@@ -23,7 +23,6 @@
 #include <stdio.h>  // fprintf(), NULL
 #include <stdlib.h> // exit(), EXIT_SUCCESS
 #include <dlfcn.h>
-#include <Availability.h>
 
 #include "test.h" // PASS(), FAIL(), XPASS(), XFAIL()
 
@@ -35,15 +34,10 @@ int flag = 0;
 	// for 64-bit binaries initializers are always called before entry point
 	#define ENTRY_BEFORE_INIT 0
 #else
-	#if __MAC_OS_X_VERSION_MIN_REQUIRED
-		// for pre 10.5, 32-bit binaries, entry point is called which then calls initializers
-		#if __MAC_OS_X_VERSION_MIN_REQUIRED < __MAC_10_5
-			#define ENTRY_BEFORE_INIT 1
-		#else
-			#define ENTRY_BEFORE_INIT 0
-		#endif
+	// for pre 10.5, 32-bit binaries, entry point is called which then calls initializers
+	#if MAC_OS_X_VERSION_MIN_REQUIRED < MAC_OS_X_VERSION_10_5
+		#define ENTRY_BEFORE_INIT 1
 	#else
-		// for iPhoneOS, initializers are always called before entry point
 		#define ENTRY_BEFORE_INIT 0
 	#endif
 #endif

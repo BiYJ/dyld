@@ -23,12 +23,10 @@
 TESTROOT = ../..
 include ${TESTROOT}/include/common.makefile
 
-all-check: all check
-
-check:
+run: all
 	./main
 
-all: main
+all : main
 
 main: main.c
 	${CC} ${CCFLAGS} -Wno-deprecated-declarations  main.c -o main  -I${TESTROOT}/include

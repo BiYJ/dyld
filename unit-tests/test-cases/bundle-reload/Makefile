@@ -29,9 +29,7 @@ else
 	CXX_VERSION = ${CXX} 
 endif
 
-all-check: all check
-
-check:
+run: all
 	./main
 
 all: main test.bundle

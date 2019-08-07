@@ -36,13 +36,11 @@ include ${TESTROOT}/include/common.makefile
 ### 
 ### 
 
-PWD = $(shell pwd)
 
-all-check: all check
 
-check:
+run: all
 	./main
-	export DYLD_LIBRARY_PATH="${PWD}/fake" && ./main
+	export DYLD_LIBRARY_PATH="`pwd`/fake" && ./main
 	
 
 all: main real/liblink.dylib  real/libtest.dylib fake/libtest.dylib
@@ -53,20 +51,20 @@ main: main.c stub/libtest.dylib stub/liblink.dylib real/libbase.dylib
 
 stub/libtest.dylib: test.c
 	mkdir -p stub
-	${CC} ${CCFLAGS} -I${TESTROOT}/include -dynamiclib test.c -DDO_NOTHING -o stub/libtest.dylib -install_name "${PWD}/real/libtest.dylib"
+	${CC} ${CCFLAGS} -I${TESTROOT}/include -dynamiclib test.c -DDO_NOTHING -o stub/libtest.dylib -install_name "`pwd`/real/libtest.dylib"
 	
 stub/liblink.dylib: link.c
 	mkdir -p stub
-	${CC} ${CCFLAGS} -I${TESTROOT}/include -dynamiclib link.c -o stub/liblink.dylib -install_name "${PWD}/real/liblink.dylib"
+	${CC} ${CCFLAGS} -I${TESTROOT}/include -dynamiclib link.c -o stub/liblink.dylib -install_name "`pwd`/real/liblink.dylib"
 	
 
 real/libbase.dylib: base.c
 	mkdir -p real
-	${CC} ${CCFLAGS} -I${TESTROOT}/include -dynamiclib base.c -o "${PWD}/real/libbase.dylib"
+	${CC} ${CCFLAGS} -I${TESTROOT}/include -dynamiclib base.c -o "`pwd`/real/libbase.dylib"
 	
 real/libtest.dylib: test.c real/libbase.dylib
 	mkdir -p real
-	${CC} ${CCFLAGS} -I${TESTROOT}/include -dynamiclib test.c real/libbase.dylib -o "${PWD}/real/libtest.dylib"
+	${CC} ${CCFLAGS} -I${TESTROOT}/include -dynamiclib test.c real/libbase.dylib -o "`pwd`/real/libtest.dylib"
 	
 real/liblink.dylib: link.c
 	mkdir -p real
@@ -75,7 +73,7 @@ real/liblink.dylib: link.c
 
 fake/libtest.dylib: test.c real/libbase.dylib
 	mkdir -p fake
-	${CC} ${CCFLAGS} -I${TESTROOT}/include -dynamiclib test.c real/libbase.dylib -o "${PWD}/fake/libtest.dylib" -install_name "${PWD}/real/libtest.dylib"
+	${CC} ${CCFLAGS} -I${TESTROOT}/include -dynamiclib test.c real/libbase.dylib -o "`pwd`/fake/libtest.dylib" -install_name "`pwd`/real/libtest.dylib"
 	
 	
 

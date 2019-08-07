@@ -40,11 +40,8 @@ int main()
 	
 	// execute leaks command on myself
 	char cmd[512];
-	int result = system(cmd);
-	if ( result == EXIT_SUCCESS )
-		PASS("rpath-dlopen-leak");
-	else
-		FAIL("rpath-dlopen-leak");
+	sprintf(cmd, "leaks %u\n", getpid());
+	system(cmd);
 	 	
 	return EXIT_SUCCESS;
 }

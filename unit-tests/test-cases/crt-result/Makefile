@@ -1,5 +1,5 @@
 ##
-# Copyright (c) 2007-2009 Apple Inc. All rights reserved.
+# Copyright (c) 2007 Apple Inc. All rights reserved.
 #
 # @APPLE_LICENSE_HEADER_START@
 # 
@@ -28,23 +28,28 @@ include ${TESTROOT}/include/common.makefile
 # for both crt1.0 and crt1.10.5.o
 #
 
-all-check: all check
-
-check:
-	${TESTROOT}/bin/exit-zero-pass.pl "crt-result good" "crt-result good"    ./good
-	${TESTROOT}/bin/exit-non-zero-pass.pl "crt-result bad" "crt-result bad"  ./bad
-
-
-all: good bad 
+run: all
+	${TESTROOT}/bin/exit-zero-pass.pl "crt-result good-10.4" "crt-result good-10.4"    ./good-10.4
+	${TESTROOT}/bin/exit-zero-pass.pl "crt-result good-10.5" "crt-result good-10.5"    ./good-10.5
+	${TESTROOT}/bin/exit-non-zero-pass.pl "crt-result bad-10.4" "crt-result bad-10.4"  ./bad-10.4
+	${TESTROOT}/bin/exit-non-zero-pass.pl "crt-result bad-10.5" "crt-result bad-10.5"  ./bad-10.5
 
 
-good: good.c
-	${CC} ${CCFLAGS} -I${TESTROOT}/include -o good good.c 
+all: good-10.4 good-10.5  bad-10.4 bad-10.5 
 
-bad: bad.c
-	${CC} ${CCFLAGS} -I${TESTROOT}/include -o bad bad.c
+good-10.4: good.c
+	${CC} ${CCFLAGS} -I${TESTROOT}/include -o good-10.4 good.c -mmacosx-version-min=10.4
+
+good-10.5: good.c
+	${CC} ${CCFLAGS} -I${TESTROOT}/include -o good-10.5 good.c -mmacosx-version-min=10.5
+
+bad-10.4: bad.c
+	${CC} ${CCFLAGS} -I${TESTROOT}/include -o bad-10.4 bad.c -mmacosx-version-min=10.4
+
+bad-10.5: bad.c
+	${CC} ${CCFLAGS} -I${TESTROOT}/include -o bad-10.5 bad.c -mmacosx-version-min=10.5
 
 clean:
-	${RM} ${RMFLAGS} *~  good  bad 
+	${RM} ${RMFLAGS} *~ good-10.4 good-10.5  bad-10.4 bad-10.5 
  
 

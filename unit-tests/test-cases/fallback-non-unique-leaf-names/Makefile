@@ -23,31 +23,21 @@
 TESTROOT = ../..
 include ${TESTROOT}/include/common.makefile
 
-PWD = $(shell pwd)
-
-
-all-check: all check
-
-
-all:  main 
+all :  main 
+	export DYLD_FALLBACK_LIBRARY_PATH=$$PWD && ./main
 
 main : main.c libfoo.dylib libbar.dylib
 	${CC} -I${TESTROOT}/include main.c libfoo.dylib libbar.dylib -o main 
 
 libfoo.dylib : foo.c
-	${CC} -I${TESTROOT}/include  foo.c -DFOO=1 -dynamiclib -install_name ${PWD}/libfoo.dylib -o libfoo.dylib
+	${CC} -I${TESTROOT}/include  foo.c -DFOO=1 -dynamiclib -o $$PWD/libfoo.dylib
 
 libbar.dylib : bar.c other/libfoo.dylib
-	${CC} -I${TESTROOT}/include  bar.c -dynamiclib other/libfoo.dylib -install_name ${PWD}/libbar.dylib -o libbar.dylib
-	
+	${CC} -I${TESTROOT}/include  bar.c -dynamiclib other/libfoo.dylib -o $$PWD/libbar.dylib
+
 other/libfoo.dylib : foo.c
-	mkdir -p ${PWD}/other
-	${CC} -I${TESTROOT}/include  foo.c -DFOO=2 -dynamiclib  -install_name ${PWD}/other/libfoo.dylib -o other/libfoo.dylib
-
-
-
-check: 
-	export DYLD_FALLBACK_LIBRARY_PATH=${PWD} && ./main
+	mkdir -p $$PWD/other
+	${CC} -I${TESTROOT}/include  foo.c -DFOO=2 -dynamiclib  -o $$PWD/other/libfoo.dylib
 
 
 clean:

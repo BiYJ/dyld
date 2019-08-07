@@ -28,14 +28,11 @@
 #include <sys/mman.h> 
 #include <unistd.h>
 #include <fcntl.h>
-#include <Availability.h>
 
 #include "test.h" // PASS(), FAIL()
 
 int main()
 {
-// NSAddImage is only available on Mac OS X - not iPhone OS
-#if __MAC_OS_X_VERSION_MIN_REQUIRED
 	int fd = open("test.bundle", O_RDONLY, 0);
 	if ( fd == -1 ) {
 		FAIL("open() failed");
@@ -58,11 +55,10 @@ int main()
 
 	// we are using a file not of type MH_BUNDLE, so NSCreateObjectFileImageFromMemory should fail
 	NSObjectFileImage ofi;
-	if ( NSCreateObjectFileImageFromMemory(loadAddress, stat_buf.st_size, &ofi) == NSObjectFileImageSuccess ) 
-		FAIL("bundle-memory-load-bad");
-	else
-#endif
+	if ( NSCreateObjectFileImageFromMemory(loadAddress, stat_buf.st_size, &ofi) != NSObjectFileImageSuccess ) 
 		PASS("bundle-memory-load-bad");
+	else
+		FAIL("bundle-memory-load-bad");
 	
 	return 0;
 }
