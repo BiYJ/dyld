@@ -574,8 +574,15 @@ ImageLoader* ImageLoaderMachO::instantiateMainExecutable(const macho_header* mh,
 	unsigned int libCount;
 	const linkedit_data_command* codeSigCmd;
 	const encryption_info_command* encryptCmd;
+	
+	// sniffLoadCommands 函数会对主程序 Mach-O进 行一系列的校验
+	/*      case LC_DYLD_INFO:
+	 	case LC_DYLD_INFO_ONLY:
+	 		*compressed = true;
+	 */
 	sniffLoadCommands(mh, path, false, &compressed, &segCount, &libCount, context, &codeSigCmd, &encryptCmd);
 	// instantiate concrete class based on content of load commands
+	// 已解密
 	if ( compressed ) 
 		return ImageLoaderMachOCompressed::instantiateMainExecutable(mh, slide, path, segCount, libCount, context);
 	else

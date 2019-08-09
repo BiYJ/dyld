@@ -92,17 +92,23 @@
 ImageLoaderMachOCompressed* ImageLoaderMachOCompressed::instantiateMainExecutable(const macho_header* mh, uintptr_t slide, const char* path, 
 																		unsigned int segCount, unsigned int libCount, const LinkContext& context)
 {
+	// 初始化 image
 	ImageLoaderMachOCompressed* image = ImageLoaderMachOCompressed::instantiateStart(mh, path, segCount, libCount);
 
 	// set slide for PIE programs
+	// 设置 image 偏移量
 	image->setSlide(slide);
 
 	// for PIE record end of program, to know where to start loading dylibs
 	if ( slide != 0 )
+		// 设置动态库起始地址
 		fgNextPIEDylibAddress = (uintptr_t)image->getEnd();
 
+	// 禁用段覆盖检测
 	image->disableCoverageCheck();
+	// 结束 image 上下文
 	image->instantiateFinish(context);
+	// 设置 image 加载状态为 dyld_image_state_mapped
 	image->setMapped(context);
 
 	if ( context.verboseMapping ) {

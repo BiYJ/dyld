@@ -126,16 +126,26 @@ static void runDyldInitializers(const struct macho_header* mh, intptr_t slide, i
 //
 static uintptr_t slideOfMainExecutable(const struct macho_header* mh)
 {
+    // Mach-O 文件中 load commands 数量
 	const uint32_t cmd_count = mh->ncmds;
+    
+    // 偏移地址到 load commands 的首地址
 	const struct load_command* const cmds = (struct load_command*)(((char*)mh)+sizeof(macho_header));
 	const struct load_command* cmd = cmds;
+    
+    
 	for (uint32_t i = 0; i < cmd_count; ++i) {
+        // 选中 cmd = LC_SEGMENT_COMMAND
 		if ( cmd->cmd == LC_SEGMENT_COMMAND ) {
 			const struct macho_segment_command* segCmd = (struct macho_segment_command*)cmd;
+            // 实际对应 LC_SEGMENT_COMMAND(_TEXT)
 			if ( (segCmd->fileoff == 0) && (segCmd->filesize != 0)) {
+                
+                // Mach-O 文件首地址 - LC_SEGMENT_COMMAND(_TEXT).vmaddr
 				return (uintptr_t)mh - segCmd->vmaddr;
 			}
 		}
+        // 偏移 command 指针
 		cmd = (const struct load_command*)(((char*)cmd)+cmd->cmdsize);
 	}
 	return 0;

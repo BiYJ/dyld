@@ -399,19 +399,31 @@ bool MachOLoaded::findExportedSymbol(Diagnostics& diag, const char* symbolName, 
 
 intptr_t MachOLoaded::getSlide() const
 {
+    // 诊断对象。
     Diagnostics diag;
     __block intptr_t slide = 0;
+    
+    // 循环 load command
     forEachLoadCommand(diag, ^(const load_command* cmd, bool& stop) {
+        
+        // 64 位
         if ( cmd->cmd == LC_SEGMENT_64 ) {
             const segment_command_64* seg = (segment_command_64*)cmd;
+            
+            // LC_SEGMENT_64(__TEXT)
             if ( strcmp(seg->segname, "__TEXT") == 0 ) {
+                // mach-O 首地址 - LC_SEGMENT_64(__TEXT).vmaddr
                 slide = (uintptr_t)(((uint64_t)this) - seg->vmaddr);
                 stop = true;
             }
         }
+        // 32 位
         else if ( cmd->cmd == LC_SEGMENT ) {
             const segment_command* seg = (segment_command*)cmd;
+            
+            // LC_SEGMENT(__TEXT)
             if ( strcmp(seg->segname, "__TEXT") == 0 ) {
+                // mach-O 首地址 - LC_SEGMENT(__TEXT).vmaddr
                 slide = (uintptr_t)(((uint64_t)this) - seg->vmaddr);
                 stop = true;
             }
@@ -691,8 +703,16 @@ bool MachOLoaded::intersectsRange(uintptr_t start, uintptr_t length) const
     __block bool result = false;
     uintptr_t slide = getSlide();
     forEachSegment(^(const SegmentInfo& info, bool& stop) {
+        /*
+                        ①、主程序 segment 中的虚拟地址 + 虚拟地址大小 + 偏移量 >= 共享区起始地址
+                        ②、主程序 segment 中的虚拟地址 + 偏移量 < 共享区终止地址
+         
+                        ① 和 ② 同时 YES，那么认为主程序 Mach-O 有 segments 与共享区重叠，此时共享区不可用，从而动态库缓存不可用
+        
+                        疑问：地址是从高到低分配？
+                    */
         if ( (info.vmAddr+info.vmSize+slide >= start) && (info.vmAddr+slide < start+length) )
-            result = true;
+            result = true;  // 疑问：没有设置 stop = true
     });
     return result;
 }

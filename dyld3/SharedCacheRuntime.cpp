@@ -671,18 +671,23 @@ bool loadDyldCache(const SharedCacheOptions& options, SharedCacheLoadInfo* resul
 
 #if TARGET_IPHONE_SIMULATOR
     // simulator only supports mmap()ing cache privately into process
+    // 模拟器只支持 mmap（内存映射） 缓存到当前进程
     return mapCachePrivate(options, results);
 #else
     if ( options.forcePrivate ) {
         // mmap cache into this process only
+        // 只加载 mmap（内存映射） 缓存到当前进程
         return mapCachePrivate(options, results);
     }
     else {
         // fast path: when cache is already mapped into shared region
         bool hasError = false;
+        // 已加载过的
         if ( reuseExistingCache(options, results) ) {
             hasError = (results->errorMessage != nullptr);
-        } else {
+        }
+        // 未加载过的
+        else {
             // slow path: this is first process to load cache
             hasError = mapCacheSystemWide(options, results);
         }

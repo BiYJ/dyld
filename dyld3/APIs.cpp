@@ -97,10 +97,14 @@ intptr_t _dyld_get_image_slide(const mach_header* mh)
 {
     log_apis("_dyld_get_image_slide(%p)\n", mh);
 
+    // 获取 Mach-O 文件加载对象
     const MachOLoaded* mf = (MachOLoaded*)mh;
+    
+    // 如果 mach 文件头没有 magic 值
     if ( !mf->hasMachOMagic() )
         return 0;
 
+    // 调用 MachOLoaded::getSlide() 方法
     return mf->getSlide();
 }
 
@@ -108,8 +112,10 @@ intptr_t _dyld_get_image_vmaddr_slide(uint32_t imageIndex)
 {
     log_apis("_dyld_get_image_vmaddr_slide(%d)\n", imageIndex);
 
+    // 获取到 Mach-O 文件
     const mach_header* mh = gAllImages.imageLoadAddressByIndex(imageIndex);
     if ( mh != nullptr )
+        // 调用上面的方法
         return dyld3::_dyld_get_image_slide(mh);
     return 0;
 }

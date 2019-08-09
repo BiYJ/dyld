@@ -2302,8 +2302,10 @@ static void getHostInfo(const macho_header* mainExecutableMH, uintptr_t mainExec
 static void checkSharedRegionDisable(const dyld3::MachOLoaded* mainExecutableMH, uintptr_t mainExecutableSlide)
 {
 #if __MAC_OS_X_VERSION_MIN_REQUIRED
-	// if main executable has segments that overlap the shared region,
-	// then disable using the shared region
+	// if main executable has segments that overlap the shared region, then disable using the shared region
+	// 如果主程序 Mach-O 有 segments 与共享区重叠，那么共享区不可用。并且，iOS 不开启共享区无法运行。
+	
+	// 检测两者是否重叠
 	if ( mainExecutableMH->intersectsRange(SHARED_REGION_BASE, SHARED_REGION_SIZE) ) {
 		gLinkContext.sharedRegionMode = ImageLoader::kDontUseSharedRegion;
 		if ( gLinkContext.verboseMapping )
@@ -2845,12 +2847,16 @@ bool isCompatibleMachO(const uint8_t* firstPage, const char* path)
 
 // The kernel maps in main executable before dyld gets control.  We need to 
 // make an ImageLoader* for the already mapped in main executable.
+// kernel 在 dyld 之前已经映射了主程序 Mach-O，dyld 判断 Mach-O 的兼容性后，实例化成 ImageLoader 加载到内存中交给 dyld 管理
 static ImageLoaderMachO* instantiateFromLoadedImage(const macho_header* mh, uintptr_t slide, const char* path)
 {
 	// try mach-o loader
 	if ( isCompatibleMachO((const uint8_t*)mh, path) ) {
+		// 实例化 ImageLoader 对象
 		ImageLoader* image = ImageLoaderMachO::instantiateMainExecutable(mh, slide, path, gLinkContext);
+		// 添加到内存
 		addImage(image);
+		
 		return (ImageLoaderMachO*)image;
 	}
 	
@@ -3740,8 +3746,11 @@ ImageLoader* load(const char* path, const LoadContext& context, unsigned& cacheI
 	
 	// try all path permutations and check against existing loaded images
 
+	// 查找 image
 	ImageLoader* image = loadPhase0(path, orgPath, context, cacheIndex, NULL);
+	// 没有找到
 	if ( image != NULL ) {
+		// 继续查找
 		CRSetCrashLogMessage2(NULL);
 		return image;
 	}
@@ -3751,6 +3760,7 @@ ImageLoader* load(const char* path, const LoadContext& context, unsigned& cacheI
 	image = loadPhase0(path, orgPath, context, cacheIndex, &exceptions);
 #if !TARGET_IPHONE_SIMULATOR
 	// <rdar://problem/16704628> support symlinks on disk to a path in dyld shared cache
+	// 共享缓存
 	if ( image == NULL)
 		image = loadPhase2cache(path, orgPath, context, cacheIndex, &exceptions);
 #endif
@@ -3799,6 +3809,7 @@ static void mapSharedCache()
 {
 	dyld3::SharedCacheOptions opts;
 	opts.cacheDirOverride	= sSharedCacheOverrideDir;
+	// gLinkContext.sharedRegionMode 在 setContext() 方法中设置默认值，为 kUseSharedRegion
 	opts.forcePrivate		= (gLinkContext.sharedRegionMode == ImageLoader::kUsePrivateSharedRegion);
 
 
@@ -3808,9 +3819,12 @@ static void mapSharedCache()
 	opts.useHaswell			= false;
 #endif
 	opts.verbose			= gLinkContext.verboseMapping;
+	
+	// 加载 dyld 缓存
 	loadDyldCache(opts, &sSharedCacheLoadInfo);
 
 	// update global state
+	// 更新进程的全局状态信息
 	if ( sSharedCacheLoadInfo.loadAddress != nullptr ) {
 		gLinkContext.dyldCache 								= sSharedCacheLoadInfo.loadAddress;
 		dyld::gProcessInfo->processDetachedFromSharedRegion = opts.forcePrivate;
@@ -5896,12 +5910,15 @@ _main(const macho_header* mainExecutableMH, uintptr_t mainExecutableSlide,
 	uint8_t mainExecutableCDHashBuffer[20];
 	const uint8_t* mainExecutableCDHash = nullptr;
 	if ( hexToBytes(_simple_getenv(apple, "executable_cdhash"), 40, mainExecutableCDHashBuffer) )
+		// ①、获取主程序 hash
 		mainExecutableCDHash = mainExecutableCDHashBuffer;
 
 	// Trace dyld's load
+	// ②、告知 kernel，dyld 已加载
 	notifyKernelAboutImage((macho_header*)&__dso_handle, _simple_getenv(apple, "dyld_file"));
 #if !TARGET_IPHONE_SIMULATOR
 	// Trace the main executable's load
+	// ③、告知 kernel，主程序 Mach-O 已加载
 	notifyKernelAboutImage(mainExecutableMH, _simple_getenv(apple, "executable_file"));
 #endif
 
@@ -5910,14 +5927,19 @@ _main(const macho_header* mainExecutableMH, uintptr_t mainExecutableSlide,
 	sMainExecutableSlide = mainExecutableSlide;
 #if __MAC_OS_X_VERSION_MIN_REQUIRED
 	// if this is host dyld, check to see if iOS simulator is being run
+	// ④、获取 dyld 路径
 	const char* rootPath = _simple_getenv(envp, "DYLD_ROOT_PATH");
 	if ( (rootPath != NULL) ) {
 		// look to see if simulator has its own dyld
 		char simDyldPath[PATH_MAX]; 
 		strlcpy(simDyldPath, rootPath, PATH_MAX);
 		strlcat(simDyldPath, "/usr/lib/dyld_sim", PATH_MAX);
+		// 打开 dyld_sim 路径
 		int fd = my_open(simDyldPath, O_RDONLY, 0);
+		
+		// 成功
 		if ( fd != -1 ) {
+			// 如果是模拟器，并且正确加载`dyld_sim`，则直接返回主程序地址
 			const char* errMessage = useSimulatorDyld(fd, mainExecutableMH, simDyldPath, argc, argv, envp, apple, startGlue, &result);
 			if ( errMessage != NULL )
 				halt(errMessage);
@@ -5928,14 +5950,17 @@ _main(const macho_header* mainExecutableMH, uintptr_t mainExecutableSlide,
 
 	CRSetCrashLogMessage("dyld: launch started");
 
+	// ⑤、设置上下文
 	setContext(mainExecutableMH, argc, argv, envp, apple);
 
 	// Pickup the pointer to the exec path.
+	// ⑥、获取主程序路径
 	sExecPath = _simple_getenv(apple, "executable_path");
 
 	// <rdar://problem/13868260> Remove interim apple[0] transition code from dyld
 	if (!sExecPath) sExecPath = apple[0];
 	
+	// ⑦、获取应用 Mach-O 文件的绝对路径
 	if ( sExecPath[0] != '/' ) {
 		// have relative path, use cwd to make absolute
 		char cwdbuff[MAXPATHLEN];
@@ -5950,14 +5975,17 @@ _main(const macho_header* mainExecutableMH, uintptr_t mainExecutableSlide,
 	}
 
 	// Remember short name of process for later logging
+	// ⑧、设置进程名称
 	sExecShortName = ::strrchr(sExecPath, '/');
 	if ( sExecShortName != NULL )
 		++sExecShortName;
 	else
 		sExecShortName = sExecPath;
 
+	// ⑨、配置进程受限模式
     configureProcessRestrictions(mainExecutableMH);
 
+	// ⑩、再次检测/设置上下文环境
 #if __MAC_OS_X_VERSION_MIN_REQUIRED
     if ( !gLinkContext.allowEnvVarsPrint && !gLinkContext.allowEnvVarsPath && !gLinkContext.allowEnvVarsSharedCache ) {
 		pruneEnvironmentVariables(envp, &apple);
@@ -5981,23 +6009,36 @@ _main(const macho_header* mainExecutableMH, uintptr_t mainExecutableSlide,
 			sEnv.DYLD_FALLBACK_FRAMEWORK_PATH = sRestrictedFrameworkFallbackPaths;
 	}
 #endif
+	
+	// 如果设置了DYLD_PRINT_OPTS，则打印参数
 	if ( sEnv.DYLD_PRINT_OPTS )
 		printOptions(argv);
+	
+	// 如果设置了DYLD_PRINT_ENV，则打印环境变量
 	if ( sEnv.DYLD_PRINT_ENV ) 
 		printEnvironmentVariables(envp);
+	
+	// 获取主程序架构信息
 	getHostInfo(mainExecutableMH, mainExecutableSlide);
 
 	// load shared cache
+	// 检查共享缓存是否可用
 	checkSharedRegionDisable((dyld3::MachOLoaded*)mainExecutableMH, mainExecutableSlide);
 #if TARGET_IPHONE_SIMULATOR
 	// <HACK> until <rdar://30773711> is fixed
 	gLinkContext.sharedRegionMode = ImageLoader::kUsePrivateSharedRegion;
 	// </HACK>
 #endif
+	// 非 Dont Use
 	if ( gLinkContext.sharedRegionMode != ImageLoader::kDontUseSharedRegion ) {
+		// 映射共享缓存到共享区
 		mapSharedCache();
 	}
+	
+	// 缓存是否兼容（DyldSharedCache * loadAddress 为空 || 版本相同 -》YES）
 	bool cacheCompatible = (sSharedCacheLoadInfo.loadAddress == nullptr) || (sSharedCacheLoadInfo.loadAddress->header.formatVersion == dyld3::closure::kFormatVersion);
+	
+	//  设置了 DYLD_USE_CLOSURES || 在白名单
 	if ( cacheCompatible && (sEnableClosures || inWhiteList(sExecPath)) ) {
 		const dyld3::closure::LaunchClosure* mainClosure = nullptr;
 		dyld3::closure::LoadedFileInfo mainFileInfo;
@@ -6062,6 +6103,7 @@ _main(const macho_header* mainExecutableMH, uintptr_t mainExecutableSlide,
 	}
 	else {
 		if ( gLinkContext.verboseWarnings )
+			// 不使用closure，因为共享缓存格式版本与 dyld 不匹配
 			dyld::log("dyld: not using closure because shared cache format version does not match dyld's\n");
 	}
 	// could not use closure info, launch old way
@@ -6089,6 +6131,7 @@ _main(const macho_header* mainExecutableMH, uintptr_t mainExecutableSlide,
 
 	try {
 		// add dyld itself to UUID list
+		// 添加 dyld 的 UUID 到共享缓存 UUID 列表中
 		addDyldImageToUUIDList();
 
 #if SUPPORT_ACCELERATE_TABLES
@@ -6109,13 +6152,17 @@ reloadAllImages:
 
 		CRSetCrashLogMessage(sLoadingCrashMessage);
 		// instantiate ImageLoader for main executable
+		// 实例化主程序
 		sMainExecutable = instantiateFromLoadedImage(mainExecutableMH, mainExecutableSlide, sExecPath);
 		gLinkContext.mainExecutable = sMainExecutable;
+		// 代码签名
 		gLinkContext.mainExecutableCodeSigned = hasCodeSignatureLoadCommand(mainExecutableMH);
 
 #if TARGET_IPHONE_SIMULATOR
 		// check main executable is not too new for this OS
+		// 检测主程序是否支持当前设备版本
 		{
+			// 检查是否是模拟器二进制文件
 			if ( ! isSimulatorBinary((uint8_t*)mainExecutableMH, sExecPath) ) {
 				throwf("program was built for a platform that is not supported by this runtime");
 			}
@@ -6123,7 +6170,9 @@ reloadAllImages:
 
 			// dyld is always built for the current OS, so we can get the current OS version
 			// from the load command in dyld itself.
+			// 获取 dyld 中存储的当前 OS 版本
 			uint32_t dyldMinOS = ImageLoaderMachO::minOSVersion((const mach_header*)&__dso_handle);
+			// 应用 mach-O 文件的版本超过了当前模拟器设备的版本，抛出异常
 			if ( mainMinOS > dyldMinOS ) {
 	#if TARGET_OS_WATCH
 				throwf("app was built for watchOS %d.%d which is newer than this simulator %d.%d",
@@ -6167,6 +6216,7 @@ reloadAllImages:
 		// dyld_all_image_infos image list does not contain dyld
 		// add it as dyldPath field in dyld_all_image_infos
 		// for simulator, dyld_sim is in image list, need host dyld added
+		// dyld 加载的 image_infos 并不包含 dyld 本身，它被放到 dyld_all_image_infos 的 dyldPath 字段中去了。而对于模拟器，dyld 加载的image_infos 是包含 dyld_sim 的。
 #if TARGET_IPHONE_SIMULATOR
 		// get path of host dyld from table of syscall vectors in host dyld
 		void* addressInDyld = gSyscallHelpers;
@@ -6174,21 +6224,26 @@ reloadAllImages:
 		// get path of dyld itself
 		void*  addressInDyld = (void*)&__dso_handle;
 #endif
+		
+		// 获取 dyld 路径并与 gProcessInfo->dyldPath 对比
 		char dyldPathBuffer[MAXPATHLEN+1];
 		int len = proc_regionfilename(getpid(), (uint64_t)(long)addressInDyld, dyldPathBuffer, MAXPATHLEN);
 		if ( len > 0 ) {
 			dyldPathBuffer[len] = '\0'; // proc_regionfilename() does not zero terminate returned string
+			// 如果不同将获取到的路径复制给 gProcessInfo->dyldPath
 			if ( strcmp(dyldPathBuffer, gProcessInfo->dyldPath) != 0 )
 				gProcessInfo->dyldPath = strdup(dyldPathBuffer);
 		}
 
 		// load any inserted libraries
+		// 插入动态库
 		if	( sEnv.DYLD_INSERT_LIBRARIES != NULL ) {
 			for (const char* const* lib = sEnv.DYLD_INSERT_LIBRARIES; *lib != NULL; ++lib) 
 				loadInsertedDylib(*lib);
 		}
 		// record count of inserted libraries so that a flat search will look at 
 		// inserted libraries, then main, then others.
+		// 记录插入的动态库个数
 		sInsertedDylibCount = sAllImages.size()-1;
 
 		// link main executable
