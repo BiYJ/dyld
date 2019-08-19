@@ -340,6 +340,7 @@ void process_linkedit(const dyld_shared_cache_dylib_info* dylibInfo, const dyld_
 	if ( dylibInfo->isAlias )
 		return;
 	const macho_header<P>* mh = (const macho_header<P>*)dylibInfo->machHeader;
+    // 从 mach-O 文件头读取 cmd 数量
 	uint32_t ncmds = mh->ncmds();
 	const macho_load_command<P>* const cmds = (macho_load_command<P>*)((long)mh + sizeof(macho_header<P>));
 	const macho_load_command<P>* cmd = cmds;

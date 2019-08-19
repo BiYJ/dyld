@@ -140,15 +140,18 @@ ImageLoaderMachOCompressed* ImageLoaderMachOCompressed::instantiateFromFile(cons
 		image->setFileInfo(info.st_dev, info.st_ino, info.st_mtime);
 
 		// if this image is code signed, let kernel validate signature before mapping any pages from image
+		// ①、交给内核去验证动态库的代码签名
 		image->loadCodeSignature(codeSigCmd, fd, offsetInFat, context);
 		
 		// Validate that first data we read with pread actually matches with code signature
+		// ②、映射到内存的 first page, （4k大小）与代码签名是否match。在这里会执行沙盒，签名认证
 		image->validateFirstPages(codeSigCmd, fd, fileData, lenFileData, offsetInFat, context);
 
 		// mmap segments
 		image->mapSegments(fd, offsetInFat, lenInFat, info.st_size, context);
 
 		// if framework is FairPlay encrypted, register with kernel
+		// 根据 DYLD_ENCRYPTION_INFO，让内核去注册加密信息。在该方法中，会调用内核方法 mremap_encrypted，传入加密数据的地址和长度等数据，查看了内核代码，应该是根据cryptid是否为1做了解密操作。
 		image->registerEncryption(encryptCmd, context);
 		
 		// probe to see if code signed correctly
@@ -1026,16 +1029,21 @@ void ImageLoaderMachOCompressed::registerInterposing(const LinkContext& context)
 	const uint32_t cmd_count = ((macho_header*)fMachOData)->ncmds;
 	const struct load_command* const cmds = (struct load_command*)&fMachOData[sizeof(macho_header)];
 	const struct load_command* cmd = cmds;
+	// 遍历 cmds
 	for (uint32_t i = 0; i < cmd_count; ++i) {
 		switch (cmd->cmd) {
+			// SEGMENT。
 			case LC_SEGMENT_COMMAND:
 			{
 				const struct macho_segment_command* seg = (struct macho_segment_command*)cmd;
 				const struct macho_section* const sectionsStart = (struct macho_section*)((char*)seg + sizeof(struct macho_segment_command));
 				const struct macho_section* const sectionsEnd = &sectionsStart[seg->nsects];
+				
 				for (const struct macho_section* sect=sectionsStart; sect < sectionsEnd; ++sect) {
+					// 查找 __interpose 及 __DATA 段。sectname = Section Name
 					if ( ((sect->flags & SECTION_TYPE) == S_INTERPOSING) || ((strcmp(sect->sectname, "__interpose") == 0) && (strcmp(seg->segname, "__DATA") == 0)) ) {
 						// <rdar://problem/23929217> Ensure section is within segment
+						// 保证 section 在 segment 内存区域里面
 						if ( (sect->addr < seg->vmaddr) || (sect->addr+sect->size > seg->vmaddr+seg->vmsize) || (sect->addr+sect->size < sect->addr) )
 							dyld::throwf("interpose section has malformed address range for %s\n", this->getPath());
 						__block uintptr_t sectionStart = sect->addr + fSlide;
@@ -1117,6 +1125,7 @@ void ImageLoaderMachOCompressed::registerInterposing(const LinkContext& context)
 										tuple.replacee = it->replacement;
 									}
 								}
+								// 读取段信息存入 fgInterposingTuples
 								ImageLoader::fgInterposingTuples.push_back(tuple);
 							}
 						}
@@ -1832,6 +1841,7 @@ uintptr_t ImageLoaderMachOCompressed::interposeAt(const LinkContext& context, Im
 	if ( type == BIND_TYPE_POINTER ) {
 		uintptr_t* fixupLocation = (uintptr_t*)addr;
 		uintptr_t curValue = *fixupLocation;
+		// 通过 interposedAddress() 在 fgInterposingTuples 中找到需要替换的符号地址进行替换
 		uintptr_t newValue = interposedAddress(context, curValue, image);
 		if ( newValue != curValue) {
 			*fixupLocation = newValue;
@@ -1845,12 +1855,13 @@ void ImageLoaderMachOCompressed::doInterpose(const LinkContext& context)
 	if ( context.verboseInterposing )
 		dyld::log("dyld: interposing %lu tuples onto image: %s\n", fgInterposingTuples.size(), this->getPath());
 
-	// update prebound symbols
+	// update prebound symbols。更新预绑定的符号
 	eachBind(context, ^(const LinkContext& ctx, ImageLoaderMachOCompressed* image,
 						uintptr_t addr, uint8_t type, const char* symbolName,
 						uint8_t symbolFlags, intptr_t addend, long libraryOrdinal,
 						ExtraBindData *extraBindData,
 						const char* msg, LastLookup* last, bool runResolver) {
+		// 直接调用 interposeAt()
 		return ImageLoaderMachOCompressed::interposeAt(ctx, image, addr, type, symbolName, symbolFlags,
 													   addend, libraryOrdinal, extraBindData,
 													   msg, last, runResolver);
@@ -1860,6 +1871,7 @@ void ImageLoaderMachOCompressed::doInterpose(const LinkContext& context)
 							uint8_t symbolFlags, intptr_t addend, long libraryOrdinal,
 							ExtraBindData *extraBindData,
 							const char* msg, LastLookup* last, bool runResolver) {
+		// 直接调用 interposeAt()
 		return ImageLoaderMachOCompressed::interposeAt(ctx, image, addr, type, symbolName, symbolFlags,
 													   addend, libraryOrdinal, extraBindData,
 													   msg, last, runResolver);

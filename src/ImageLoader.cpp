@@ -369,6 +369,7 @@ const ImageLoader::Symbol* ImageLoader::findExportedSymbolInImageOrDependentImag
 }
 
 // this is called by initializeMainExecutable() to interpose on the initial set of images
+// 这由 initializeMainExecutable() 调用，以插入初始镜像集
 void ImageLoader::applyInterposing(const LinkContext& context)
 {
 	dyld3::ScopedTimer timer(DBG_DYLD_TIMING_APPLY_INTERPOSING, 0, 0, 0);
@@ -394,15 +395,18 @@ uintptr_t ImageLoader::interposedAddress(const LinkContext& context, uintptr_t a
 	return address;
 }
 
-void ImageLoader::applyInterposingToDyldCache(const LinkContext& context) {
+void ImageLoader::applyInterposingToDyldCache(const LinkContext& context)
+{
 #if USES_CHAINED_BINDS
 	if (!context.dyldCache)
 		return;
+	// fgInterposingTuples 为空
 	if (fgInterposingTuples.empty())
 		return;
 	// For each of the interposed addresses, see if any of them are in the shared cache.  If so, find
 	// that image and apply its patch table to all uses.
 	uintptr_t cacheStart = (uintptr_t)context.dyldCache;
+	// begin -》》end
 	for (std::vector<InterposeTuple>::iterator it=fgInterposingTuples.begin(); it != fgInterposingTuples.end(); it++) {
 		if ( context.verboseInterposing )
 			dyld::log("dyld: interpose: Trying to interpose address 0x%08llx\n", (uint64_t)it->replacee);
@@ -465,8 +469,10 @@ void ImageLoader::addDynamicInterposingTuples(const struct dyld_interpose_tuple 
 }
 
 // <rdar://problem/29099600> dyld should tell the kernel when it is doing root fix-ups
+// dyld 应该告诉内核什么时候进行根修复
 void ImageLoader::vmAccountingSetSuspended(const LinkContext& context, bool suspend)
 {
+	// arm、arm64 处理器
 #if __arm__ || __arm64__
 	static bool sVmAccountingSuspended = false;
 	if ( suspend == sVmAccountingSuspended )
@@ -492,31 +498,38 @@ void ImageLoader::link(const LinkContext& context, bool forceLazysBound, bool pr
 	// clear error strings
 	(*context.setErrorStrings)(0, NULL, NULL, NULL);
 
+	// 起始时间。用于记录时间间隔
 	uint64_t t0 = mach_absolute_time();
+	// ①、递归加载主程序依赖的库，完成之后发送一个状态为 dyld_image_state_dependents_mapped的通知。
 	this->recursiveLoadLibraries(context, preflightOnly, loaderRPaths, imagePath);
 	context.notifyBatch(dyld_image_state_dependents_mapped, preflightOnly);
 
-	// we only do the loading step for preflights
+	// we only do the loading step for preflights  只做预检的装载步骤
 	if ( preflightOnly )
 		return;
 
 	uint64_t t1 = mach_absolute_time();
+	// 清空 image 层级关系
 	context.clearAllDepths();
+	// 递归更新 image 层级关系
 	this->recursiveUpdateDepth(context.imageCount());
 
 	__block uint64_t t2, t3, t4, t5;
 	{
 		dyld3::ScopedTimer(DBG_DYLD_TIMING_APPLY_FIXUPS, 0, 0, 0);
 		t2 = mach_absolute_time();
+		// ②、递归修正自己和依赖库的基地址，因为 ASLR 的原因，需要根据随机 slide 修正基地址。
 		this->recursiveRebase(context);
 		context.notifyBatch(dyld_image_state_rebased, false);
 
 		t3 = mach_absolute_time();
 		if ( !context.linkingMainExecutable )
+			// ③、递归绑定 noLazy 的符号表，lazy的符号会在运行时动态绑定（首次被调用才去绑定）
 			this->recursiveBindWithAccounting(context, forceLazysBound, neverUnload);
 
 		t4 = mach_absolute_time();
 		if ( !context.linkingMainExecutable )
+			// ④、绑定弱符号表，比如未初始化的全局变量就是弱符号。
 			this->weakBind(context);
 		t5 = mach_absolute_time();
 	}
@@ -526,19 +539,23 @@ void ImageLoader::link(const LinkContext& context, bool forceLazysBound, bool pr
 	uint64_t t6 = mach_absolute_time();	
 
 	std::vector<DOFInfo> dofs;
+	// ⑤、递归获取/注册程序的 DOF 节区，dtrace 会用其动态跟踪。
 	this->recursiveGetDOFSections(context, dofs);
+	// 注册
 	context.registerDOFs(dofs);
 	uint64_t t7 = mach_absolute_time();	
 
 	// interpose any dynamically loaded images
 	if ( !context.linkingMainExecutable && (fgInterposingTuples.size() != 0) ) {
 		dyld3::ScopedTimer timer(DBG_DYLD_TIMING_APPLY_INTERPOSING, 0, 0, 0);
+		// 递归应用插入的动态库
 		this->recursiveApplyInterposing(context);
 	}
 
 	// clear error strings
 	(*context.setErrorStrings)(0, NULL, NULL, NULL);
 
+	// 计算出各种时间间隔
 	fgTotalLoadLibrariesTime += t1 - t0;
 	fgTotalRebaseTime += t3 - t2;
 	fgTotalBindTime += t4 - t3;
@@ -583,6 +600,7 @@ void ImageLoader::processInitializers(const LinkContext& context, mach_port_t th
 	}
 	// If any upward dependencies remain, init them.
 	if ( ups.count > 0 )
+		// 递归调用
 		processInitializers(context, thisThread, timingInfo, ups);
 }
 
@@ -590,14 +608,20 @@ void ImageLoader::processInitializers(const LinkContext& context, mach_port_t th
 void ImageLoader::runInitializers(const LinkContext& context, InitializerTimingList& timingInfo)
 {
 	uint64_t t1 = mach_absolute_time();
+	
+	// 获取线程
 	mach_port_t thisThread = mach_thread_self();
 	ImageLoader::UninitedUpwards up;
 	up.count = 1;
 	up.images[0] = this;
+	// 在进程中初始化
 	processInitializers(context, thisThread, timingInfo, up);
 	context.notifyBatch(dyld_image_state_initialized, false);
+	
 	mach_port_deallocate(mach_task_self(), thisThread);
+	
 	uint64_t t2 = mach_absolute_time();
+	// 初始化耗时
 	fgTotalInitTime += (t2 - t1);
 }
 
@@ -863,7 +887,7 @@ void ImageLoader::recursiveApplyInterposing(const LinkContext& context)
 					dependentImage->recursiveApplyInterposing(context);
 			}
 				
-			// interpose this image
+			// interpose this image。插入该镜像
 			doInterpose(context);
 		}
 		catch (const char* msg) {
@@ -876,10 +900,14 @@ void ImageLoader::recursiveApplyInterposing(const LinkContext& context)
 
 void ImageLoader::recursiveBindWithAccounting(const LinkContext& context, bool forceLazysBound, bool neverUnload)
 {
+	// 调用下面的方法，recursiveBind 内部递归调用
 	this->recursiveBind(context, forceLazysBound, neverUnload);
 	vmAccountingSetSuspended(context, false);
 }
 
+/**
+  *  @brief   recursiveBind 完成递归绑定符号表的操作。此处的符号表针对的是非延迟加载的符号表，对于 DYLD_BIND_AT_LAUNCH 等特殊情况下的 non-lazy 符号才执行立即绑定。
+  */
 void ImageLoader::recursiveBind(const LinkContext& context, bool forceLazysBound, bool neverUnload)
 {
 	// Normally just non-lazy pointers are bound immediately.
@@ -898,6 +926,7 @@ void ImageLoader::recursiveBind(const LinkContext& context, bool forceLazysBound
 					dependentImage->recursiveBind(context, forceLazysBound, neverUnload);
 			}
 			// bind this image
+			// 绑定。this 表示递归调用时，recursiveBind 方法的调用者
 			this->doBind(context, forceLazysBound);	
 			// mark if lazys are also bound
 			if ( forceLazysBound || this->usablePrebinding(context) )
@@ -905,7 +934,8 @@ void ImageLoader::recursiveBind(const LinkContext& context, bool forceLazysBound
 			// mark as never-unload if requested
 			if ( neverUnload )
 				this->setNeverUnload();
-				
+			
+			// 通知
 			context.notifySingle(dyld_image_state_bound, this, NULL);
 		}
 		catch (const char* msg) {
@@ -942,6 +972,7 @@ void ImageLoader::weakBind(const LinkContext& context)
 	// get set of ImageLoaders that participate in coalecsing
 	ImageLoader* imagesNeedingCoalescing[fgImagesRequiringCoalescing];
 	unsigned imageIndexes[fgImagesRequiringCoalescing];
+	// 合并所有动态库的弱符号到列表中
 	int count = context.getCoalescedImages(imagesNeedingCoalescing, imageIndexes);
 	
 	// count how many have not already had weakbinding done
@@ -949,8 +980,10 @@ void ImageLoader::weakBind(const LinkContext& context)
 	int countOfImagesWithWeakDefinitionsNotInSharedCache = 0;
 	for(int i=0; i < count; ++i) {
 		if ( ! imagesNeedingCoalescing[i]->weakSymbolsBound(imageIndexes[i]) )
+			// 获取未进行绑定的弱符号的个数
 			++countNotYetWeakBound;
 		if ( ! imagesNeedingCoalescing[i]->inSharedCache() )
+			// 获取在共享缓存中已绑定的弱符号个数
 			++countOfImagesWithWeakDefinitionsNotInSharedCache;
 	}
 
@@ -960,6 +993,7 @@ void ImageLoader::weakBind(const LinkContext& context)
 		ImageLoader::CoalIterator iterators[count];
 		ImageLoader::CoalIterator* sortedIts[count];
 		for(int i=0; i < count; ++i) {
+			// 对需要绑定的弱符号排序
 			imagesNeedingCoalescing[i]->initializeCoalIterator(iterators[i], i, imageIndexes[i]);
 			sortedIts[i] = &iterators[i];
 			if ( context.verboseWeakBind )
@@ -974,6 +1008,7 @@ void ImageLoader::weakBind(const LinkContext& context)
 			//	dyld::log("sym[%d]=%s ", sortedIts[i]->loadOrder, sortedIts[i]->symbolName);
 			//dyld::log("\n");
 			// increment iterator with lowest symbol
+			// 计算弱符号偏移量及大小，绑定弱符号
 			if ( sortedIts[0]->image->incrementCoalIterator(*sortedIts[0]) )
 				++doneCount; 
 			// re-sort iterators
@@ -1105,6 +1140,7 @@ void ImageLoader::recursiveGetDOFSections(const LinkContext& context, std::vecto
 void ImageLoader::setNeverUnloadRecursive() {
 	if ( ! fNeverUnload ) {
 		// break cycles
+		// fNeverUnload -- image was statically loaded by main executable.  镜像由主可执行文件静态加载
 		fNeverUnload = true;
 		
 		// gather lower level libraries first
@@ -1151,19 +1187,23 @@ void ImageLoader::InitializerTimingList::addTime(const char* name, uint64_t time
 void ImageLoader::recursiveInitialization(const LinkContext& context, mach_port_t this_thread, const char* pathToInitialize,
 										  InitializerTimingList& timingInfo, UninitedUpwards& uninitUps)
 {
+	// 递归锁
 	recursive_lock lock_info(this_thread);
 	recursiveSpinLock(lock_info);
 
 	if ( fState < dyld_image_state_dependents_initialized-1 ) {
 		uint8_t oldState = fState;
 		// break cycles
+		// 退出递归循环
 		fState = dyld_image_state_dependents_initialized-1;
 		try {
 			// initialize lower level libraries first
+			// 先初始化低级别的库
 			for(unsigned int i=0; i < libraryCount(); ++i) {
 				ImageLoader* dependentImage = libImage(i);
 				if ( dependentImage != NULL ) {
 					// don't try to initialize stuff "above" me yet
+					// 不要试图初始化级别高于我的
 					if ( libIsUpward(i) ) {
 						uninitUps.images[uninitUps.count] = dependentImage;
 						uninitUps.count++;
@@ -1174,7 +1214,7 @@ void ImageLoader::recursiveInitialization(const LinkContext& context, mach_port_
                 }
 			}
 			
-			// record termination order
+			// record termination order. 记录终止命令
 			if ( this->needsTermination() )
 				context.terminationRecorder(this);
 			
@@ -1182,9 +1222,11 @@ void ImageLoader::recursiveInitialization(const LinkContext& context, mach_port_
 			uint64_t t1 = mach_absolute_time();
 			fState = dyld_image_state_dependents_initialized;
 			oldState = fState;
+			//
 			context.notifySingle(dyld_image_state_dependents_initialized, this, &timingInfo);
 			
 			// initialize this image
+			// 真正初始化镜像
 			bool hasInitializers = this->doInitialization(context);
 
 			// let anyone know we finished initializing this image

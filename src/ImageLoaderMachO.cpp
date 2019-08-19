@@ -575,7 +575,7 @@ ImageLoader* ImageLoaderMachO::instantiateMainExecutable(const macho_header* mh,
 	const linkedit_data_command* codeSigCmd;
 	const encryption_info_command* encryptCmd;
 	
-	// sniffLoadCommands 函数会对主程序 Mach-O进 行一系列的校验
+	// sniffLoadCommands 函数会对主程序 Mach-O进 行一系列的校验：对代码签名，MachO加密，动态库数量，段的数量相关信息的loadCommand 做解析，提取出 command 数据。
 	/*      case LC_DYLD_INFO:
 	 	case LC_DYLD_INFO_ONLY:
 	 		*compressed = true;
@@ -583,10 +583,12 @@ ImageLoader* ImageLoaderMachO::instantiateMainExecutable(const macho_header* mh,
 	sniffLoadCommands(mh, path, false, &compressed, &segCount, &libCount, context, &codeSigCmd, &encryptCmd);
 	// instantiate concrete class based on content of load commands
 	// 已解密
-	if ( compressed ) 
+	if ( compressed )
+		// Compressed
 		return ImageLoaderMachOCompressed::instantiateMainExecutable(mh, slide, path, segCount, libCount, context);
 	else
 #if SUPPORT_CLASSIC_MACHO
+		// Classic
 		return ImageLoaderMachOClassic::instantiateMainExecutable(mh, slide, path, segCount, libCount, context);
 #else
 		throw "missing LC_DYLD_INFO load command";
@@ -1252,6 +1254,7 @@ void ImageLoaderMachO::registerInterposing(const LinkContext& context)
 					const struct macho_section* const sectionsStart = (struct macho_section*)((char*)seg + sizeof(struct macho_segment_command));
 					const struct macho_section* const sectionsEnd = &sectionsStart[seg->nsects];
 					for (const struct macho_section* sect=sectionsStart; sect < sectionsEnd; ++sect) {
+						// 查找 __interpose 及 __DATA 段
 						if ( ((sect->flags & SECTION_TYPE) == S_INTERPOSING) || ((strcmp(sect->sectname, "__interpose") == 0) && (strcmp(seg->segname, "__DATA") == 0)) ) {
 							// <rdar://problem/23929217> Ensure section is within segment
 							if ( (sect->addr < seg->vmaddr) || (sect->addr+sect->size > seg->vmaddr+seg->vmsize) || (sect->addr+sect->size < sect->addr) )
@@ -2373,7 +2376,9 @@ bool ImageLoaderMachO::doInitialization(const LinkContext& context)
 	CRSetCrashLogMessage2(this->getPath());
 
 	// mach-o has -init and static initializers
+	// 执行 LC_ROUTINES_COMMAND segment 中保存的函数
 	doImageInit(context);
+	// 执行__DATA,__mod_init_func section中保存的函数。这个 section 中保存的是 C++ 的构造函数及带有attribute((constructor)) 的 C函数
 	doModInitFunctions(context);
 	
 	CRSetCrashLogMessage2(NULL);

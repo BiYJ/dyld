@@ -929,6 +929,7 @@ static void notifySingle(dyld_image_states state, const ImageLoader* image, Imag
 			dyld_uuid_info info;
 			if ( image->getUUID(info.imageUUID) ) {
 				info.imageLoadAddress = image->machHeader();
+				// 保存 UUID
 				addNonSharedCacheImageUUID(info);
 			}
 		}
@@ -1436,7 +1437,7 @@ static void runAllStaticTerminators(void* extra)
 
 void initializeMainExecutable()
 {
-	// record that we've reached this step
+	// record that we've reached this step。开始初始化标识
 	gLinkContext.startedInitializingMainExecutable = true;
 
 	// run initialzers for any inserted dylibs
@@ -1445,11 +1446,13 @@ void initializeMainExecutable()
 	const size_t rootCount = sImageRoots.size();
 	if ( rootCount > 1 ) {
 		for(size_t i=1; i < rootCount; ++i) {
+			// 初始化动态库。保证它们在主程序 image 之前完成初始化
 			sImageRoots[i]->runInitializers(gLinkContext, initializerTimes[0]);
 		}
 	}
 	
-	// run initializers for main executable and everything it brings up 
+	// run initializers for main executable and everything it brings up
+	// 初始化主程序
 	sMainExecutable->runInitializers(gLinkContext, initializerTimes[0]);
 	
 	// register cxa_atexit() handler to run static terminators in all loaded images when this process exits
@@ -1457,6 +1460,7 @@ void initializeMainExecutable()
 		(*gLibSystemHelpers->cxa_atexit)(&runAllStaticTerminators, NULL, NULL);
 
 	// dump info if requested
+	// DYLD_PRINT_STATISTICS 和 DYLD_PRINT_STATISTICS_DETAILS 如果被设置，在初始化完毕以后会打印 dyld 启动 App 的各个重要时间节点信息（没有包括全部细节）
 	if ( sEnv.DYLD_PRINT_STATISTICS )
 		ImageLoader::printStatistics((unsigned int)allImagesCount(), initializerTimes[0]);
 	if ( sEnv.DYLD_PRINT_STATISTICS_DETAILS )
@@ -2851,10 +2855,11 @@ bool isCompatibleMachO(const uint8_t* firstPage, const char* path)
 static ImageLoaderMachO* instantiateFromLoadedImage(const macho_header* mh, uintptr_t slide, const char* path)
 {
 	// try mach-o loader
+	// CPU 架构是否匹配
 	if ( isCompatibleMachO((const uint8_t*)mh, path) ) {
-		// 实例化 ImageLoader 对象
+		// 实例化 ImageLoader 对象。参数：macho header、ASLR、执行路径、链接上下文
 		ImageLoader* image = ImageLoaderMachO::instantiateMainExecutable(mh, slide, path, gLinkContext);
-		// 添加到内存
+		// 分配主程序image的内存，更新。
 		addImage(image);
 		
 		return (ImageLoaderMachO*)image;
@@ -3161,11 +3166,13 @@ static ImageLoader* loadPhase6(int fd, const struct stat& stat_buf, const char* 
 		ImageLoader* image = nullptr;
 		{
 			dyld3::ScopedTimer timer(DBG_DYLD_TIMING_MAP_IMAGE, path, 0, 0);
+			// 加载实例化 imageLoader
 			image = ImageLoaderMachO::instantiateFromFile(path, fd, firstPagesPtr, headerAndLoadCommandsSize, fileOffset, fileLength, stat_buf, gLinkContext);
 			timer.setData4((uint64_t)image->machHeader());
 		}
 		
 		// validate
+		// 验证，然后加入到 master list 中（sAllImages）
 		return checkandAddImage(image, context);
 	}
 	
@@ -3546,6 +3553,7 @@ static ImageLoader* loadPhase3(const char* path, const char* orgPath, const Load
 	return loadPhase4(path, orgPath, context, cacheIndex, exceptions);
 }
 
+// 去缓存查找
 static ImageLoader* loadPhase2cache(const char* path, const char *orgPath, const LoadContext& context, unsigned& cacheIndex, std::vector<const char*>* exceptions) {
 	ImageLoader* image = NULL;
 #if !TARGET_IPHONE_SIMULATOR
@@ -3554,6 +3562,7 @@ static ImageLoader* loadPhase2cache(const char* path, const char *orgPath, const
 		realpath(path, resolvedPath);
 		int myerr = errno;
 		// If realpath() resolves to a path which does not exist on disk, errno is set to ENOENT
+		// 地址正常
 		if ( (myerr == ENOENT) || (myerr == 0) )
 		{
 			image = loadPhase4(resolvedPath, orgPath, context, cacheIndex, exceptions);
@@ -3729,7 +3738,9 @@ static bool cacheablePath(const char* path) {
 // the path against all loaded images.  The second time, the last phase calls open() on 
 // the path.  Either time, if an image is found, the phases all unwind without checking
 // for other paths.
-//
+/**
+  *  @brief   做路径展开，搜索查找，排重，以及缓存查找工作。其中路径的展开和搜索分几个阶段（phase）
+  */
 ImageLoader* load(const char* path, const LoadContext& context, unsigned& cacheIndex)
 {
 	CRSetCrashLogMessage2(path);
@@ -3760,7 +3771,7 @@ ImageLoader* load(const char* path, const LoadContext& context, unsigned& cacheI
 	image = loadPhase0(path, orgPath, context, cacheIndex, &exceptions);
 #if !TARGET_IPHONE_SIMULATOR
 	// <rdar://problem/16704628> support symlinks on disk to a path in dyld shared cache
-	// 共享缓存
+	// 去缓存中查找。
 	if ( image == NULL)
 		image = loadPhase2cache(path, orgPath, context, cacheIndex, &exceptions);
 #endif
@@ -4673,10 +4684,12 @@ static void printAllImages()
 void link(ImageLoader* image, bool forceLazysBound, bool neverUnload, const ImageLoader::RPathChain& loaderRPaths, unsigned cacheIndex)
 {
 	// add to list of known images.  This did not happen at creation time for bundles
+	// 添加到已知镜像列表中。这在创建 bundles 时没有处理。
 	if ( image->isBundle() && !image->isLinked() )
 		addImage(image);
 
-	// we detect root images as those not linked in yet 
+	// we detect root images as those not linked in yet
+	// 在根镜像中检测是否尚未链接
 	if ( !image->isLinked() )
 		addRootImage(image);
 	
@@ -4687,9 +4700,11 @@ void link(ImageLoader* image, bool forceLazysBound, bool neverUnload, const Imag
 		if ( image == sAllCacheImagesProxy )
 			path = sAllCacheImagesProxy->getIndexedPath(cacheIndex);
 #endif
+		// 调用 ImageLoader::link() 链接
 		image->link(gLinkContext, forceLazysBound, false, neverUnload, loaderRPaths, path);
 	}
 	catch (const char* msg) {
+		// 标记 image 为未使用，处理
 		garbageCollectImages();
 		throw;
 	}
@@ -4722,6 +4737,7 @@ void garbageCollectImages()
 	static bool sDoingGC = false;
 	static bool sRedo = false;
 
+	// 已经在处理
 	if ( sDoingGC ) {
 		// GC is currently being run, just set a flag to have it run again.
 		sRedo = true;
@@ -4736,6 +4752,7 @@ void garbageCollectImages()
 		for (std::vector<ImageLoader*>::iterator it=sAllImages.begin(); it != sAllImages.end(); it++) {
 			ImageLoader* image = *it;
 			//dyld::log("gc: neverUnload=%d name=%s\n", image->neverUnload(), image->getShortName());
+			// 标记为未使用
 			image->markNotUsed();
 		}
 		
@@ -4743,6 +4760,7 @@ void garbageCollectImages()
 		for (std::vector<ImageLoader*>::iterator it=sAllImages.begin(); it != sAllImages.end(); it++) {
 			ImageLoader* image = *it;
 			if ( (image->dlopenCount() != 0) || image->neverUnload() || (image == sMainExecutable) ) {
+				// 锁
 				OSSpinLockLock(&sDynamicReferencesLock);
 					image->markedUsedRecursive(sDynamicReferences);
 				OSSpinLockUnlock(&sDynamicReferencesLock);
@@ -5902,6 +5920,7 @@ _main(const macho_header* mainExecutableMH, uintptr_t mainExecutableSlide,
 		int argc, const char* argv[], const char* envp[], const char* apple[], 
 		uintptr_t* startGlue)
 {
+	// ①、设置运行环境，配置环境变量
 	if (dyld3::kdebug_trace_dyld_enabled(DBG_DYLD_TIMING_LAUNCH_EXECUTABLE)) {
 		launchTraceID = dyld3::kdebug_trace_dyld_duration_start(DBG_DYLD_TIMING_LAUNCH_EXECUTABLE, (uint64_t)mainExecutableMH, 0, 0);
 	}
@@ -5910,24 +5929,26 @@ _main(const macho_header* mainExecutableMH, uintptr_t mainExecutableSlide,
 	uint8_t mainExecutableCDHashBuffer[20];
 	const uint8_t* mainExecutableCDHash = nullptr;
 	if ( hexToBytes(_simple_getenv(apple, "executable_cdhash"), 40, mainExecutableCDHashBuffer) )
-		// ①、获取主程序 hash
+		// 获取主程序 hash
 		mainExecutableCDHash = mainExecutableCDHashBuffer;
 
 	// Trace dyld's load
-	// ②、告知 kernel，dyld 已加载
+	// 告知 kernel，dyld 已加载
 	notifyKernelAboutImage((macho_header*)&__dso_handle, _simple_getenv(apple, "dyld_file"));
 #if !TARGET_IPHONE_SIMULATOR
 	// Trace the main executable's load
-	// ③、告知 kernel，主程序 Mach-O 已加载
+	// 告知 kernel，主程序 Mach-O 已加载
 	notifyKernelAboutImage(mainExecutableMH, _simple_getenv(apple, "executable_file"));
 #endif
 
 	uintptr_t result = 0;
+	// mach_header 类型结构体，表示当前 App 的 Mach-O头部信息。有了头部信息，加载器就可以从头开始，遍历整个Mach-O文件的信息。
 	sMainExecutableMachHeader = mainExecutableMH;
+	// long 类型数据，获取主程序的 slide 值，表示 ASLR 位移长度
 	sMainExecutableSlide = mainExecutableSlide;
 #if __MAC_OS_X_VERSION_MIN_REQUIRED
 	// if this is host dyld, check to see if iOS simulator is being run
-	// ④、获取 dyld 路径
+	// 获取 dyld 路径
 	const char* rootPath = _simple_getenv(envp, "DYLD_ROOT_PATH");
 	if ( (rootPath != NULL) ) {
 		// look to see if simulator has its own dyld
@@ -5950,17 +5971,17 @@ _main(const macho_header* mainExecutableMH, uintptr_t mainExecutableSlide,
 
 	CRSetCrashLogMessage("dyld: launch started");
 
-	// ⑤、设置上下文
+	// 设置一个全局链接上下文，包括一些回调函数、参数与标志设置信息，其中的 context 结构体实例、回调函数都是 dyld 自己的实现
 	setContext(mainExecutableMH, argc, argv, envp, apple);
 
 	// Pickup the pointer to the exec path.
-	// ⑥、获取主程序路径
+	// 获取主程序路径
 	sExecPath = _simple_getenv(apple, "executable_path");
 
 	// <rdar://problem/13868260> Remove interim apple[0] transition code from dyld
 	if (!sExecPath) sExecPath = apple[0];
 	
-	// ⑦、获取应用 Mach-O 文件的绝对路径
+	// 获取应用 Mach-O 文件的绝对路径
 	if ( sExecPath[0] != '/' ) {
 		// have relative path, use cwd to make absolute
 		char cwdbuff[MAXPATHLEN];
@@ -5975,17 +5996,17 @@ _main(const macho_header* mainExecutableMH, uintptr_t mainExecutableSlide,
 	}
 
 	// Remember short name of process for later logging
-	// ⑧、设置进程名称
+	// 获取进程名称
 	sExecShortName = ::strrchr(sExecPath, '/');
 	if ( sExecShortName != NULL )
 		++sExecShortName;
 	else
 		sExecShortName = sExecPath;
 
-	// ⑨、配置进程受限模式
+	// 配置进程受限模式。根据当前进程是否受限，再次配置链接上下文以及其他环境参数
     configureProcessRestrictions(mainExecutableMH);
 
-	// ⑩、再次检测/设置上下文环境
+	// 再次检测/设置上下文环境
 #if __MAC_OS_X_VERSION_MIN_REQUIRED
     if ( !gLinkContext.allowEnvVarsPrint && !gLinkContext.allowEnvVarsPath && !gLinkContext.allowEnvVarsSharedCache ) {
 		pruneEnvironmentVariables(envp, &apple);
@@ -6022,7 +6043,8 @@ _main(const macho_header* mainExecutableMH, uintptr_t mainExecutableSlide,
 	getHostInfo(mainExecutableMH, mainExecutableSlide);
 
 	// load shared cache
-	// 检查共享缓存是否可用
+	// ②、加载共享缓存
+	// 检查共享缓存是否可用，iOS 必须开启
 	checkSharedRegionDisable((dyld3::MachOLoaded*)mainExecutableMH, mainExecutableSlide);
 #if TARGET_IPHONE_SIMULATOR
 	// <HACK> until <rdar://30773711> is fixed
@@ -6152,7 +6174,7 @@ reloadAllImages:
 
 		CRSetCrashLogMessage(sLoadingCrashMessage);
 		// instantiate ImageLoader for main executable
-		// 实例化主程序
+		// ③、实例化主程序
 		sMainExecutable = instantiateFromLoadedImage(mainExecutableMH, mainExecutableSlide, sExecPath);
 		gLinkContext.mainExecutable = sMainExecutable;
 		// 代码签名
@@ -6209,7 +6231,7 @@ reloadAllImages:
 
 		// Now that shared cache is loaded, setup an versioned dylib overrides
 	#if SUPPORT_VERSIONED_PATHS
-		checkVersionedPaths();
+		checkVersionedPaths(); // 设置加载的动态库版本。这里的动态库还没有包括经 DYLD_INSERT_LIBRARIES 插入的库。
 	#endif
 
 
@@ -6236,7 +6258,7 @@ reloadAllImages:
 		}
 
 		// load any inserted libraries
-		// 插入动态库
+		// ④、插入动态库
 		if	( sEnv.DYLD_INSERT_LIBRARIES != NULL ) {
 			for (const char* const* lib = sEnv.DYLD_INSERT_LIBRARIES; *lib != NULL; ++lib) 
 				loadInsertedDylib(*lib);
@@ -6255,7 +6277,9 @@ reloadAllImages:
 			sMainExecutable->rebase(gLinkContext, -mainExecutableSlide);
 		}
 #endif
+		// ⑤、链接主程序。链接所有动态库，进行符号修正绑定工作
 		link(sMainExecutable, sEnv.DYLD_BIND_AT_LAUNCH, true, ImageLoader::RPathChain(NULL, NULL), -1);
+		// 修改主程序的 fNeverUnload 属性
 		sMainExecutable->setNeverUnloadRecursive();
 		if ( sMainExecutable->forceFlat() ) {
 			gLinkContext.bindFlat = true;
@@ -6265,14 +6289,19 @@ reloadAllImages:
 		// link any inserted libraries
 		// do this after linking main executable so that any dylibs pulled in by inserted 
 		// dylibs (e.g. libSystem) will not be in front of dylibs the program uses
+		// ⑥、链接其他被插入的动态库。参与链接的动态库根据第 ④ 步中加载的插入的动态库，从 sAllImages 的第二个 imageLoader 开始
 		if ( sInsertedDylibCount > 0 ) {
+			// 循环处理
 			for(unsigned int i=0; i < sInsertedDylibCount; ++i) {
 				ImageLoader* image = sAllImages[i+1];
+				// 链接
 				link(image, sEnv.DYLD_BIND_AT_LAUNCH, true, ImageLoader::RPathChain(NULL, NULL), -1);
+				// 递归修改 image 的 fNeverUnload 属性
 				image->setNeverUnloadRecursive();
 			}
 			// only INSERTED libraries can interpose
 			// register interposing info after all inserted libraries are bound so chaining works
+			// 只有插入可插入的库。在绑定所有插入的库后注册插入信息，以便链接工作
 			for(unsigned int i=0; i < sInsertedDylibCount; ++i) {
 				ImageLoader* image = sAllImages[i+1];
 				image->registerInterposing(gLinkContext);
@@ -6280,17 +6309,20 @@ reloadAllImages:
 		}
 
 		// <rdar://problem/19315404> dyld should support interposition even without DYLD_INSERT_LIBRARIES
+		// 即使没有 DYLD_INSERT_LIBRARIES，dyld 也应该支持插入
 		for (long i=sInsertedDylibCount+1; i < sAllImages.size(); ++i) {
 			ImageLoader* image = sAllImages[i];
 			if ( image->inSharedCache() )
 				continue;
 			image->registerInterposing(gLinkContext);
 		}
-	#if SUPPORT_ACCELERATE_TABLES
+	#if SUPPORT_ACCELERATE_TABLES  // !TARGET_IPHONE_SIMULATOR，非模拟器
 		if ( (sAllCacheImagesProxy != NULL) && ImageLoader::haveInterposingTuples() ) {
 			// Accelerator tables cannot be used with implicit interposing, so relaunch with accelerator tables disabled
+			// 如果支持加速表，是不会去支持插入加载动态库的，因此在禁用加速键表的情况下重新启动
 			ImageLoader::clearInterposingTuples();
 			// unmap all loaded dylibs (but not main executable)
+			// 取消映射所有加载的 dylib 文件，除了主程序
 			for (long i=1; i < sAllImages.size(); ++i) {
 				ImageLoader* image = sAllImages[i];
 				if ( image == sMainExecutable )
@@ -6301,6 +6333,7 @@ reloadAllImages:
 				ImageLoader::deleteImage(image);
 			}
 			// note: we don't need to worry about inserted images because if DYLD_INSERT_LIBRARIES was set we would not be using the accelerator table
+			// 清除数据
 			sAllImages.clear();
 			sImageRoots.clear();
 			sImageFilesNeedingTermination.clear();
@@ -6309,26 +6342,34 @@ reloadAllImages:
 			sRemoveImageCallbacks.clear();
 			sAddLoadImageCallbacks.clear();
 			sDisableAcceleratorTables = true;
-			sAllCacheImagesProxy = NULL;
+			sAllCacheImagesProxy = NULL;  // 下次不再进入
 			sMappedRangesStart = NULL;
 			mainExcutableAlreadyRebased = true;
 			gLinkContext.linkingMainExecutable = false;
 			resetAllImages();
+			
+			// 跳转回上面的步骤，重新执行，加载所有的镜像
 			goto reloadAllImages;
 		}
 	#endif
 
 		// apply interposing to initial set of images
 		for(int i=0; i < sImageRoots.size(); ++i) {
+			// 是调用 ImageLoader::applyInterposing()，不是 ClosureWriter.cpp。内部递归，最终是执行 doInterpose() 方法
 			sImageRoots[i]->applyInterposing(gLinkContext);
 		}
+		// 插入信息存入 dyld 缓存
 		ImageLoader::applyInterposingToDyldCache(gLinkContext);
+		// 修改主程序插入标识
 		gLinkContext.linkingMainExecutable = false;
 
 		// Bind and notify for the main executable now that interposing has been registered
+		// 从主程序开始调用，递归执行绑定、通知（插入信息已经注册）
 		uint64_t bindMainExecutableStartTime = mach_absolute_time();
+		// 内部执行 doBind()、notifySingle()
 		sMainExecutable->recursiveBindWithAccounting(gLinkContext, sEnv.DYLD_BIND_AT_LAUNCH, true);
 		uint64_t bindMainExecutableEndTime = mach_absolute_time();
+		// 绑定和通知处理时间
 		ImageLoaderMachO::fgTotalBindTime += bindMainExecutableEndTime - bindMainExecutableStartTime;
 		gLinkContext.notifyBatch(dyld_image_state_bound, false);
 
@@ -6336,11 +6377,13 @@ reloadAllImages:
 		if ( sInsertedDylibCount > 0 ) {
 			for(unsigned int i=0; i < sInsertedDylibCount; ++i) {
 				ImageLoader* image = sAllImages[i+1];
+				// 绑定插入的动态库
 				image->recursiveBind(gLinkContext, sEnv.DYLD_BIND_AT_LAUNCH, true);
 			}
 		}
 		
 		// <rdar://problem/12186933> do weak binding only after all inserted images linked
+		// 弱符号绑定
 		sMainExecutable->weakBind(gLinkContext);
 
 		// If cache has branch island dylibs, tell debugger about them
@@ -6366,20 +6409,24 @@ reloadAllImages:
 		CRSetCrashLogMessage("dyld: launch, running initializers");
 	#if SUPPORT_OLD_CRT_INITIALIZATION
 		// Old way is to run initializers via a callback from crt1.o
-		if ( ! gRunInitializersOldWay ) 
+		if ( ! gRunInitializersOldWay )
+			// ⑦、初始化主程序
 			initializeMainExecutable(); 
 	#else
 		// run all initializers
+		// ⑦、初始化主程序
 		initializeMainExecutable(); 
 	#endif
 
 		// notify any montoring proccesses that this process is about to enter main()
+		// 通知任何监视进程，此进程将要进入main（）。
 		if (dyld3::kdebug_trace_dyld_enabled(DBG_DYLD_TIMING_LAUNCH_EXECUTABLE)) {
 			dyld3::kdebug_trace_dyld_duration_end(launchTraceID, DBG_DYLD_TIMING_LAUNCH_EXECUTABLE, 0, 0, 2);
 		}
 		notifyMonitoringDyldMain();
 
 		// find entry point for main executable
+		// 获取主程序入口
 		result = (uintptr_t)sMainExecutable->getEntryFromLC_MAIN();
 		if ( result != 0 ) {
 			// main executable uses LC_MAIN, we need to use helper in libdyld to call into main()
@@ -6390,6 +6437,7 @@ reloadAllImages:
 		}
 		else {
 			// main executable uses LC_UNIXTHREAD, dyld needs to let "start" in program set up for main()
+			// 获取主程序入口
 			result = (uintptr_t)sMainExecutable->getEntryFromLC_UNIXTHREAD();
 			*startGlue = 0;
 		}
