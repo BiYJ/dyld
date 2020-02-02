@@ -4538,6 +4538,9 @@ static void setContext(const macho_header* mainExecutableMH, int argc, const cha
 // DYLD_ environment variables.
 //
 #if __MAC_OS_X_VERSION_MIN_REQUIRED
+/**
+ *  @brief   检测 machO 文件中是否有 "__RESTRICT" segement 和 "__restrict" section。Other link flags 设置
+  */
 static bool hasRestrictedSegment(const macho_header* mh)
 {
 	const uint32_t cmd_count = mh->ncmds;
@@ -4550,10 +4553,12 @@ static bool hasRestrictedSegment(const macho_header* mh)
 				const struct macho_segment_command* seg = (struct macho_segment_command*)cmd;
 				
 				//dyld::log("seg name: %s\n", seg->segname);
+				// 找到 __RESTRICT segement
 				if (strcmp(seg->segname, "__RESTRICT") == 0) {
 					const struct macho_section* const sectionsStart = (struct macho_section*)((char*)seg + sizeof(struct macho_segment_command));
 					const struct macho_section* const sectionsEnd = &sectionsStart[seg->nsects];
 					for (const struct macho_section* sect=sectionsStart; sect < sectionsEnd; ++sect) {
+						// 找到 "__restrict" section，返回 true，这时注入的动态库将不会被加载。用于 app 防护
 						if (strcmp(sect->sectname, "__restrict") == 0) 
 							return true;
 					}
@@ -4925,6 +4930,8 @@ static void configureProcessRestrictions(const macho_header* mainExecutableMH)
 		bool isRestricted = false;
 		bool libraryValidation = false;
 		// any processes with setuid or setgid bit set or with __RESTRICT segment is restricted
+		// 任何设置了 setuid 或 setgid 位的进程或带有 __RESTRICT segment 的进程都受到限制。
+		// 这样就无法进行注入动态库。破坏思路：利用二进制修改器
 		if ( issetugid() || hasRestrictedSegment(mainExecutableMH) ) {
 			isRestricted = true;
 		}
@@ -6261,7 +6268,7 @@ reloadAllImages:
 		// ④、插入动态库
 		if	( sEnv.DYLD_INSERT_LIBRARIES != NULL ) {
 			for (const char* const* lib = sEnv.DYLD_INSERT_LIBRARIES; *lib != NULL; ++lib) 
-				loadInsertedDylib(*lib);
+				loadInsertedDylib(*lib);  // 加载需要插入的动态库
 		}
 		// record count of inserted libraries so that a flat search will look at 
 		// inserted libraries, then main, then others.
